@@ -275,6 +275,10 @@ function Authed() {
               outages={dayOutages.data ?? []}
               forecasts={dayForecasts.data ?? []}
               showForecasts={showForecasts}
+              lockedAfterNow={!showForecasts}
+              lockedCtaText="Essai gratuit Pro 7j · sans CB"
+              lockedCtaTo="/abonnements"
+              teaserPercentOfRest={0.2}
             />
             {isFutureDay && !showForecasts && (
               <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">
