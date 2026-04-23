@@ -38,6 +38,7 @@ export function DayTimeline({
   lockedCtaText = "Essai gratuit Pro 7 jours · sans engagement",
   lockedCtaTo = "/abonnements",
   teaserPercentOfRest = 0.2,
+  teaserHours = 1,
 }: {
   date: Date;
   outages: Outage[];
@@ -51,8 +52,10 @@ export function DayTimeline({
   lockedAfterNow?: boolean;
   lockedCtaText?: string;
   lockedCtaTo?: string;
-  /** Fraction du reste du jour visible après "maintenant" (0..1). */
+  /** (Déprécié) Fraction du reste du jour visible après "maintenant" (0..1). Ignoré si teaserHours est défini. */
   teaserPercentOfRest?: number;
+  /** Nombre d'heures de visibilité après "maintenant" avant le verrouillage (par défaut 1h). */
+  teaserHours?: number;
 }) {
   const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
@@ -73,9 +76,9 @@ export function DayTimeline({
     if (isFuture) {
       lockFromPct = 0; // verrouillage complet
     } else if (isToday && nowOffset !== null) {
-      const teaser = Math.max(0, Math.min(1, teaserPercentOfRest));
-      const remaining = Math.max(0, 100 - nowOffset);
-      lockFromPct = Math.min(100, nowOffset + remaining * teaser);
+      // Fenêtre de teaser fixe en heures (1h par défaut), convertie en % du jour.
+      const teaserPct = (Math.max(0, teaserHours) * 60 * 60_000 / dayMs) * 100;
+      lockFromPct = Math.min(100, nowOffset + teaserPct);
     }
   }
 
