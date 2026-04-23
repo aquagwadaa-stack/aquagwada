@@ -284,7 +284,7 @@ function Authed() {
               lockedAfterNow={!showForecasts}
               lockedCtaText="Essai gratuit Pro 7j · sans CB"
               lockedCtaTo="/abonnements"
-              teaserPercentOfRest={0.2}
+              teaserHours={1}
             />
             {isFutureDay && !showForecasts && (
               <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">
