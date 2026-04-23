@@ -10,9 +10,10 @@ import { DayTimeline, DayPicker } from "@/components/outages/Timeline";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState } from "react";
-import { Heart, Plus, Trash2, Lock } from "lucide-react";
+import { Heart, Plus, Trash2, Lock, Bell, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { canSeeForecasts, PLAN_CAPS, type Tier } from "@/lib/subscription";
+import { LockedFeature, UpsellCard } from "@/components/upsell/LockedFeature";
 
 export const Route = createFileRoute("/ma-commune")({
   component: MaCommunePage,
@@ -63,8 +64,10 @@ function Authed() {
     },
   });
   const tier: Tier = (subscription.data?.tier as Tier) ?? "free";
+  const caps = PLAN_CAPS[tier];
   const showForecasts = canSeeForecasts(tier);
-  const forecastDays = PLAN_CAPS[tier].forecastDays;
+  const forecastDays = caps.forecastDays;
+  const tierLabel = tier === "free" ? "Plan gratuit" : tier === "pro" ? "Plan Pro" : "Plan Business";
 
   const favs = useQuery({
     queryKey: ["favs", user!.id],
@@ -79,6 +82,7 @@ function Authed() {
   });
 
   const favIds = useMemo(() => (favs.data ?? []).map((f) => f.commune_id), [favs.data]);
+  const reachedLimit = favIds.length >= caps.maxCommunes;
 
   const ongoing = useQuery({
     queryKey: ["ongoing-favs", favIds],
@@ -116,6 +120,10 @@ function Authed() {
 
   async function addFav() {
     if (!pickerCommune) return;
+    if (reachedLimit) {
+      toast.error(`Limite de ${caps.maxCommunes} commune(s) atteinte sur votre ${tierLabel}.`);
+      return;
+    }
     const position = (favs.data?.length ?? 0);
     const { error } = await supabase.from("user_communes").insert({ user_id: user!.id, commune_id: pickerCommune, position });
     if (error) return toast.error(error.message);
@@ -136,9 +144,16 @@ function Authed() {
   return (
     <AppShell>
       <div className="mx-auto max-w-5xl px-4 sm:px-6 py-8 space-y-8">
-        <header>
-          <h1 className="font-display text-3xl font-bold">Mes communes</h1>
-          <p className="text-sm text-muted-foreground">Statut en direct et timeline du jour pour vos communes favorites.</p>
+        <header className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h1 className="font-display text-3xl font-bold">Mes communes</h1>
+            <p className="text-sm text-muted-foreground">Statut en direct et timeline du jour pour vos communes favorites.</p>
+          </div>
+          <div className="rounded-full border border-border bg-card px-3 py-1.5 text-xs">
+            <span className="text-muted-foreground">Quota : </span>
+            <strong>{favIds.length} / {caps.maxCommunes}</strong>{" "}
+            <span className="text-muted-foreground">commune{caps.maxCommunes > 1 ? "s" : ""} · {tierLabel}</span>
+          </div>
         </header>
 
         {/* Picker */}
@@ -146,20 +161,35 @@ function Authed() {
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[220px]">
               <label className="text-xs uppercase tracking-wider text-muted-foreground">
-                Ajouter une commune {tier !== "free" && `(${favIds.length}/${PLAN_CAPS[tier].maxCommunes})`}
+                Ajouter une commune
               </label>
-              <select value={pickerCommune} onChange={(e) => setPickerCommune(e.target.value)} className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
+              <select
+                value={pickerCommune}
+                onChange={(e) => setPickerCommune(e.target.value)}
+                disabled={reachedLimit}
+                className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              >
                 <option value="">Choisir…</option>
                 {available.map((c) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
               </select>
             </div>
-            <Button onClick={addFav} className="bg-gradient-ocean text-primary-foreground"><Plus className="h-4 w-4 mr-1" />Ajouter</Button>
+            <Button
+              onClick={addFav}
+              disabled={reachedLimit || !pickerCommune}
+              className="bg-gradient-ocean text-primary-foreground disabled:opacity-50"
+            >
+              {reachedLimit ? <><Lock className="h-4 w-4 mr-1" />Limite atteinte</> : <><Plus className="h-4 w-4 mr-1" />Ajouter</>}
+            </Button>
           </div>
-          {tier === "free" && favIds.length >= 1 && (
+          {reachedLimit && tier === "free" && (
             <p className="mt-3 text-xs text-muted-foreground">
-              Plan gratuit : 1 commune. <Link to="/abonnements" className="text-primary underline">Passer Pro</Link> pour suivre jusqu'à {PLAN_CAPS.pro.maxCommunes} communes.
+              Plan gratuit : 1 commune maximum.{" "}
+              <Link to="/abonnements" className="text-primary underline font-medium">
+                Passez à Pro
+              </Link>{" "}
+              pour suivre jusqu'à {PLAN_CAPS.pro.maxCommunes} communes.
             </p>
           )}
         </div>
@@ -223,6 +253,46 @@ function Authed() {
             )}
           </div>
         )}
+
+        {/* Notifications panel — toggles visibles, certains verrouillés */}
+        <section className="rounded-2xl border border-border bg-card p-5 shadow-soft space-y-3">
+          <div className="flex items-center gap-2">
+            <Bell className="h-4 w-4 text-primary" />
+            <h2 className="font-display text-lg font-semibold">Notifications</h2>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Choisissez comment être alerté. Les canaux SMS, WhatsApp et préventifs sont réservés aux plans payants.
+          </p>
+          <div className="space-y-2">
+            <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm">
+              <span className="flex items-center gap-2">
+                <Mail className="h-4 w-4 text-primary" />
+                Email <span className="text-[11px] text-muted-foreground">(inclus)</span>
+              </span>
+              <input type="checkbox" defaultChecked className="h-4 w-7 accent-primary" />
+            </label>
+            {caps.smsEnabled
+              ? <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm">
+                  <span>SMS</span>
+                  <input type="checkbox" className="h-4 w-7 accent-primary" />
+                </label>
+              : <LockedFeature label="SMS" variant="toggle" />}
+            {caps.whatsappEnabled
+              ? <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm">
+                  <span>WhatsApp</span>
+                  <input type="checkbox" className="h-4 w-7 accent-primary" />
+                </label>
+              : <LockedFeature label="WhatsApp" variant="toggle" />}
+            {caps.preventiveNotifications
+              ? <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm">
+                  <span>Notifications préventives (avant coupure)</span>
+                  <input type="checkbox" className="h-4 w-7 accent-primary" />
+                </label>
+              : <LockedFeature label="Notifications préventives (avant coupure)" variant="toggle" />}
+          </div>
+        </section>
+
+        <UpsellCard tier={tier} />
       </div>
     </AppShell>
   );
