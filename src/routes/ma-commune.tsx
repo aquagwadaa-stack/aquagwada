@@ -16,6 +16,7 @@ import { canSeeForecasts, PLAN_CAPS, type Tier } from "@/lib/subscription";
 import { UpsellCard } from "@/components/upsell/LockedFeature";
 import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
 import { NotificationPreferencesPanel } from "@/components/notifications/NotificationPreferencesPanel";
+import { ReportBlock } from "@/components/reports/ReportBlock";
 
 export const Route = createFileRoute("/ma-commune")({
   component: MaCommunePage,
@@ -254,6 +255,10 @@ function Authed() {
             );
           })}
         </div>
+
+        {favIds.length > 0 && (
+          <ReportBlock defaultCommuneId={favIds[0]} />
+        )}
 
         {favIds.length > 0 && (
           <div className="space-y-4">
