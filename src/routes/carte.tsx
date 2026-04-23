@@ -108,29 +108,39 @@ function CartePage() {
             <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm">
               <Activity className="h-4 w-4 text-primary" />
               <strong>{ongoing.data?.length ?? 0}</strong>
-              <span className="text-muted-foreground">coupure{(ongoing.data?.length ?? 0) > 1 ? "s" : ""} en cours</span>
-            </div>
-            <div className="flex items-center gap-1">
-              <select
-                value={pickedCommune}
-                onChange={(e) => setPickedCommune(e.target.value)}
-                className="rounded-md border border-input bg-background px-2 py-1.5 text-xs"
-              >
-                <option value="">Choisir commune…</option>
-                {(communes.data ?? []).map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              {pickedCommune && (
-                <ReportDialog
-                  communeId={pickedCommune}
-                  communeName={(communes.data ?? []).find((c) => c.id === pickedCommune)?.name}
-                  triggerLabel="Signaler"
-                />
-              )}
+              <span className="text-muted-foreground">coupure{(ongoing.data?.length ?? 0) > 1 ? "s" : ""} en Guadeloupe</span>
             </div>
           </div>
         </header>
+
+        {restrictToFavs && favIds.length > 0 && (
+          <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs flex items-center gap-2">
+            <Lock className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="flex-1">
+              Vous voyez uniquement vos {favIds.length} commune{favIds.length > 1 ? "s" : ""} favorite{favIds.length > 1 ? "s" : ""}.{" "}
+              {tier === "free" && (
+                <>
+                  <Link to="/abonnements" className="text-primary font-medium underline">Passez à Pro</Link>{" "}pour suivre jusqu'à 5 communes.
+                </>
+              )}
+              {tier === "pro" && (
+                <>
+                  <Link to="/abonnements" className="text-primary font-medium underline">Passez à Business</Link>{" "}pour suivre toute la Guadeloupe.
+                </>
+              )}
+            </span>
+          </div>
+        )}
+        {noFavs && (
+          <div className="mb-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm flex flex-wrap items-center gap-3">
+            <span className="flex-1">
+              Choisissez votre commune favorite pour voir les coupures qui vous concernent.
+            </span>
+            <Link to="/ma-commune" className="text-xs font-semibold text-primary underline">
+              Choisir ma commune
+            </Link>
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-[1fr_360px] gap-6">
           <div className="rounded-2xl border border-border bg-card overflow-hidden shadow-soft" style={{ height: 520 }}>
@@ -139,32 +149,39 @@ function CartePage() {
             </Suspense>
           </div>
 
-          <aside className="rounded-2xl border border-border bg-card p-4 shadow-soft">
-            <h3 className="font-display font-semibold mb-3 flex items-center gap-2"><Droplets className="h-4 w-4 text-primary" /> En cours</h3>
-            {ongoing.isLoading ? (
-              <p className="text-sm text-muted-foreground">Chargement…</p>
-            ) : (ongoing.data ?? []).length === 0 ? (
-              <p className="text-sm text-muted-foreground">Aucune coupure active. L'eau coule partout 💧</p>
-            ) : (
-              <ul className="space-y-2 max-h-[440px] overflow-auto pr-1">
-                {(ongoing.data ?? []).map((o) => (
-                  <li key={o.id} className="rounded-lg border border-border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium text-sm">{o.commune?.name}</span>
-                      <StatusBadge status={o.status} />
-                    </div>
-                    {o.sector && <p className="text-xs text-muted-foreground mt-1">{o.sector}</p>}
-                  </li>
-                ))}
-              </ul>
-            )}
+          <aside className="space-y-4">
+            <ReportBlock defaultCommuneId={favIds[0]} />
+            <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
+              <h3 className="font-display font-semibold mb-3 flex items-center gap-2"><Droplets className="h-4 w-4 text-primary" /> En cours</h3>
+              {ongoing.isLoading ? (
+                <p className="text-sm text-muted-foreground">Chargement…</p>
+              ) : ongoingFiltered.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  {noFavs
+                    ? "Ajoutez une commune favorite pour suivre les coupures qui vous concernent."
+                    : "Aucune coupure active. L'eau coule partout 💧"}
+                </p>
+              ) : (
+                <ul className="space-y-2 max-h-[440px] overflow-auto pr-1">
+                  {ongoingFiltered.map((o) => (
+                    <li key={o.id} className="rounded-lg border border-border p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-sm">{o.commune?.name}</span>
+                        <StatusBadge status={o.status} />
+                      </div>
+                      {o.sector && <p className="text-xs text-muted-foreground mt-1">{o.sector}</p>}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </aside>
         </div>
 
         <div className="mt-8">
           <DayTimeline
             date={today}
-            outages={today24.data ?? []}
+            outages={today24Filtered}
             lockedAfterNow={lockTimeline}
             lockedCtaText="Essai gratuit Pro 7j · sans CB"
             lockedCtaTo="/abonnements"
