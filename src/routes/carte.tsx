@@ -70,7 +70,7 @@ function CartePage() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("user_communes")
-        .select("commune_id")
+        .select("commune_id, communes(id,name)")
         .order("position");
       if (error) throw error;
       return data ?? [];
@@ -79,6 +79,13 @@ function CartePage() {
     staleTime: 60_000,
   });
   const favIds = useMemo(() => (favs.data ?? []).map((f) => f.commune_id), [favs.data]);
+  const favCommunes = useMemo(
+    () =>
+      (favs.data ?? [])
+        .map((f: any) => f.communes)
+        .filter((c: any): c is { id: string; name: string } => !!c && !!c.id && !!c.name),
+    [favs.data]
+  );
 
   // Règle :
   //  - visiteurs : tout visible
@@ -186,6 +193,7 @@ function CartePage() {
             lockedCtaText="Essai gratuit Pro 7j · sans CB"
             lockedCtaTo="/abonnements"
             teaserHours={1}
+            communes={restrictToFavs ? favCommunes : undefined}
           />
         </div>
       </div>
