@@ -171,3 +171,69 @@ function Feature({ icon: Icon, title, desc }: { icon: typeof Droplets; title: st
     </div>
   );
 }
+
+function ForecastsUnlockedPreview({
+  forecasts,
+  loading,
+}: {
+  forecasts: Array<{ id: string; forecast_date: string; window_start: string | null; window_end: string | null; probability: number; commune?: { name: string } | null }>;
+  loading: boolean;
+}) {
+  if (loading) {
+    return <div className="rounded-2xl border border-border bg-card h-48 animate-pulse" />;
+  }
+  if (!forecasts.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-border bg-card p-10 text-center">
+        <Sparkles className="h-6 w-6 mx-auto text-primary mb-2" />
+        <p className="text-sm text-muted-foreground">
+          Aucune prévision pour les 14 prochains jours. C'est plutôt bon signe 💧
+        </p>
+      </div>
+    );
+  }
+  // Grouper par date
+  const byDate = new Map<string, typeof forecasts>();
+  for (const f of forecasts) {
+    const arr = byDate.get(f.forecast_date) ?? [];
+    arr.push(f);
+    byDate.set(f.forecast_date, arr);
+  }
+  const dates = Array.from(byDate.keys()).slice(0, 7);
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 shadow-soft">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="font-display text-lg font-semibold flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-warning" />
+          Prévisions des prochains jours
+        </h3>
+        <span className="text-xs text-muted-foreground">{forecasts.length} prévision{forecasts.length > 1 ? "s" : ""}</span>
+      </div>
+      <ul className="space-y-2">
+        {dates.map((d) => {
+          const items = byDate.get(d) ?? [];
+          const date = new Date(d);
+          return (
+            <li key={d} className="rounded-lg border border-border bg-card/50 p-3">
+              <p className="text-sm font-medium capitalize">
+                {date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}
+              </p>
+              <ul className="mt-2 space-y-1 text-xs text-muted-foreground">
+                {items.slice(0, 4).map((f) => (
+                  <li key={f.id} className="flex items-center justify-between gap-2">
+                    <span>
+                      {f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)}
+                      {f.commune?.name && <span className="ml-2 text-foreground">{f.commune.name}</span>}
+                    </span>
+                    <span className="text-warning font-medium">{Math.round(f.probability * 100)}%</span>
+                  </li>
+                ))}
+                {items.length > 4 && <li className="italic">+ {items.length - 4} autres…</li>}
+              </ul>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
