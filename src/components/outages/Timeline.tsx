@@ -3,7 +3,8 @@ import type { Forecast } from "@/lib/queries/forecasts";
 import { StatusBadge } from "./StatusBadge";
 import { SourceBadge } from "./SourceBadge";
 import { formatHM, formatDuration, durationBetween } from "@/lib/format";
-import { Clock, Sparkles, TrendingDown, TrendingUp, Minus } from "lucide-react";
+import { Clock, Sparkles, TrendingDown, TrendingUp, Minus, Lock } from "lucide-react";
+import { Link } from "@tanstack/react-router";
 
 function TrendBadge({ trend }: { trend: Forecast["trend"] }) {
   if (trend === "improving") {
@@ -33,11 +34,25 @@ export function DayTimeline({
   outages,
   forecasts = [],
   showForecasts = false,
+  lockedAfterNow = false,
+  lockedCtaText = "Essai gratuit Pro 7 jours · sans engagement",
+  lockedCtaTo = "/abonnements",
+  teaserPercentOfRest = 0.2,
 }: {
   date: Date;
   outages: Outage[];
   forecasts?: Forecast[];
   showForecasts?: boolean;
+  /**
+   * Si true (et qu'on est aujourd'hui), masque visuellement la timeline
+   * passé un petit teaser après "maintenant", avec un overlay CTA.
+   * Les jours futurs sont entièrement verrouillés.
+   */
+  lockedAfterNow?: boolean;
+  lockedCtaText?: string;
+  lockedCtaTo?: string;
+  /** Fraction du reste du jour visible après "maintenant" (0..1). */
+  teaserPercentOfRest?: number;
 }) {
   const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
@@ -51,6 +66,18 @@ export function DayTimeline({
   const dailyForecasts = showForecasts
     ? forecasts.filter((f) => f.forecast_date === date.toISOString().slice(0, 10))
     : [];
+
+  // Calcule le point de coupure visuelle pour le mode verrouillé
+  let lockFromPct: number | null = null;
+  if (lockedAfterNow) {
+    if (isFuture) {
+      lockFromPct = 0; // verrouillage complet
+    } else if (isToday && nowOffset !== null) {
+      const teaser = Math.max(0, Math.min(1, teaserPercentOfRest));
+      const remaining = Math.max(0, 100 - nowOffset);
+      lockFromPct = Math.min(100, nowOffset + remaining * teaser);
+    }
+  }
 
   return (
     <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 shadow-soft">
@@ -144,6 +171,29 @@ export function DayTimeline({
               </div>
             );
           })}
+
+          {/* Overlay verrouillage : voile flouté + CTA */}
+          {lockFromPct !== null && (
+            <div
+              className="pointer-events-none absolute inset-y-0 z-20 flex items-stretch"
+              style={{ left: `${lockFromPct}%`, right: 0 }}
+            >
+              <div className="relative w-full overflow-hidden rounded-md border border-dashed border-primary/30 bg-gradient-to-r from-background/60 via-background/85 to-background/95 backdrop-blur-[3px]">
+                <div className="pointer-events-auto absolute inset-0 flex flex-col items-center justify-center gap-1 p-2 text-center">
+                  <Lock className="h-4 w-4 text-primary" />
+                  <p className="text-[11px] font-semibold leading-tight">
+                    {isFuture ? "Prévisions Pro" : "Reste de la journée"}
+                  </p>
+                  <Link
+                    to={lockedCtaTo}
+                    className="text-[10px] font-medium text-primary underline underline-offset-2 hover:no-underline"
+                  >
+                    {lockedCtaText}
+                  </Link>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
