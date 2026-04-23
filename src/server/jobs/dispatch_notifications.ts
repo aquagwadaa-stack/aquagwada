@@ -21,7 +21,9 @@ type Pref = {
   notify_outage_start: boolean;
   notify_water_back: boolean;
   notify_preventive: boolean;
+  notify_preventive_water_back: boolean;
   preventive_hours_before: number;
+  preventive_water_back_hours_before: number;
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
 };
@@ -82,11 +84,20 @@ export async function dispatchNotifications(): Promise<{
     .gte("starts_at", now.toISOString())
     .lte("starts_at", futureMaxIso);
 
+  // 4. preventive_water_back : ongoing dont ends_at est entre +1h et +6h
+  const wbMaxIso = new Date(now.getTime() + 6 * 3600_000).toISOString();
+  const { data: aboutToEnd } = await supabaseAdmin
+    .from("outages")
+    .select("id, commune_id, starts_at, ends_at, status")
+    .eq("status", "ongoing")
+    .gte("ends_at", now.toISOString())
+    .lte("ends_at", wbMaxIso);
+
   let candidates = 0;
   let logged = 0;
   let skipped = 0;
 
-  async function processGroup(outages: Outage[], kind: "outage_start" | "water_back" | "preventive") {
+  async function processGroup(outages: Outage[], kind: "outage_start" | "water_back" | "preventive" | "preventive_water_back") {
     for (const o of outages) {
       // Trouver les utilisateurs abonnés à cette commune
       const { data: subs } = await supabaseAdmin
@@ -116,6 +127,7 @@ export async function dispatchNotifications(): Promise<{
         if (kind === "outage_start" && !p.notify_outage_start) { skipped += 1; continue; }
         if (kind === "water_back" && !p.notify_water_back) { skipped += 1; continue; }
         if (kind === "preventive" && !p.notify_preventive) { skipped += 1; continue; }
+        if (kind === "preventive_water_back" && !p.notify_preventive_water_back) { skipped += 1; continue; }
 
         // Préventif : respecter le délai souhaité (fenêtre ±10 min autour de pref.preventive_hours_before)
         if (kind === "preventive") {
@@ -123,9 +135,14 @@ export async function dispatchNotifications(): Promise<{
           const targetMs = now.getTime() + p.preventive_hours_before * 3600_000;
           if (Math.abs(startMs - targetMs) > 10 * 60_000) { skipped += 1; continue; }
         }
+        if (kind === "preventive_water_back" && o.ends_at) {
+          const endMs = new Date(o.ends_at).getTime();
+          const targetMs = now.getTime() + p.preventive_water_back_hours_before * 3600_000;
+          if (Math.abs(endMs - targetMs) > 10 * 60_000) { skipped += 1; continue; }
+        }
 
-        // Heures silencieuses (sauf urgent = outage_start / water_back)
-        if (kind === "preventive" && inQuietHours(p.quiet_hours_start, p.quiet_hours_end, now)) {
+        // Heures silencieuses : respect côté DB si présent (UI les a retirées mais on conserve la logique)
+        if ((kind === "preventive" || kind === "preventive_water_back") && inQuietHours(p.quiet_hours_start, p.quiet_hours_end, now)) {
           skipped += 1; continue;
         }
 
@@ -162,6 +179,7 @@ export async function dispatchNotifications(): Promise<{
   await processGroup((started ?? []) as Outage[], "outage_start");
   await processGroup((ended ?? []) as Outage[], "water_back");
   await processGroup((scheduled ?? []) as Outage[], "preventive");
+  await processGroup((aboutToEnd ?? []) as Outage[], "preventive_water_back");
 
   return { ok: true, candidates, logged, skipped };
 }

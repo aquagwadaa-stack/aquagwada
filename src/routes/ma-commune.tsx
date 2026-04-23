@@ -17,6 +17,7 @@ import { UpsellCard } from "@/components/upsell/LockedFeature";
 import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
 import { NotificationPreferencesPanel } from "@/components/notifications/NotificationPreferencesPanel";
 import { ReportBlock } from "@/components/reports/ReportBlock";
+import { HistoryPanel } from "@/components/history/HistoryPanel";
 
 export const Route = createFileRoute("/ma-commune")({
   component: MaCommunePage,
@@ -312,6 +313,8 @@ function Authed() {
         )}
 
         <NotificationPreferencesPanel tier={tier} />
+
+        <HistoryPanel tier={tier} communeIds={favIds} />
 
         <UpsellCard tier={tier} />
       </div>

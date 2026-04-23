@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { toast } from "sonner";
-import { Bell, Mail, MessageSquare, Phone, Shield, Lock, Clock, History } from "lucide-react";
+import { Bell, Mail, MessageSquare, Phone, Lock, Clock, History, Droplet, DropletOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,9 @@ type Prefs = {
   notify_outage_start: boolean;
   notify_water_back: boolean;
   notify_preventive: boolean;
+  notify_preventive_water_back: boolean;
   preventive_hours_before: number;
+  preventive_water_back_hours_before: number;
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
 };
@@ -29,7 +31,9 @@ const DEFAULT_PREFS: Prefs = {
   notify_outage_start: true,
   notify_water_back: true,
   notify_preventive: true,
+  notify_preventive_water_back: false,
   preventive_hours_before: 24,
+  preventive_water_back_hours_before: 1,
   quiet_hours_start: null,
   quiet_hours_end: null,
 };
@@ -137,146 +141,65 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
         <h2 className="font-display text-lg font-semibold">Notifications</h2>
       </div>
 
-      {/* Téléphone */}
-      <div className="rounded-xl border border-border bg-muted/30 p-4">
-        <Label htmlFor="phone" className="text-xs flex items-center gap-1.5">
-          <Phone className="h-3.5 w-3.5" /> Numéro de téléphone (pour SMS / WhatsApp)
-        </Label>
-        <div className="mt-2 flex gap-2">
-          <Input
-            id="phone"
-            type="tel"
-            placeholder="+590 690 12 34 56"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            maxLength={20}
-            className="flex-1"
-          />
-          <Button onClick={savePhone} disabled={savingPhone || phone.trim() === (profile.data?.phone ?? "")}>
-            {savingPhone ? "…" : "Enregistrer"}
-          </Button>
-        </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          Format international requis (ex : <code>+590690123456</code>). Utilisé uniquement pour vos alertes.
-        </p>
-        {needsPhoneForActiveChannel && (
-          <p className="mt-2 text-[11px] text-warning-foreground bg-warning/10 border border-warning/30 rounded px-2 py-1">
-            ⚠️ Renseignez un numéro pour recevoir vos alertes SMS / WhatsApp.
-          </p>
-        )}
-      </div>
-
-      {/* Canaux */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Canaux</p>
-        <div className="space-y-2">
-          <ChannelToggle
-            icon={Mail}
-            label="Email"
-            badge="Inclus"
-            checked={prefs.email_enabled}
-            onChange={(v) => update({ email_enabled: v })}
-          />
-          <ChannelToggle
-            icon={MessageSquare}
-            label="SMS"
-            badge={caps.smsEnabled ? "Pro" : undefined}
-            locked={!caps.smsEnabled}
-            checked={prefs.sms_enabled}
-            onChange={(v) => update({ sms_enabled: v })}
-          />
-          <ChannelToggle
-            icon={MessageSquare}
-            label="WhatsApp"
-            badge={caps.whatsappEnabled ? "Pro" : undefined}
-            locked={!caps.whatsappEnabled}
-            checked={prefs.whatsapp_enabled}
-            onChange={(v) => update({ whatsapp_enabled: v })}
-          />
-        </div>
-      </div>
-
-      {/* Événements */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Événements</p>
-        <div className="space-y-2">
-          <ChannelToggle
-            label="Début de coupure"
-            checked={prefs.notify_outage_start}
-            onChange={(v) => update({ notify_outage_start: v })}
-          />
-          <ChannelToggle
-            label="Retour de l'eau"
-            checked={prefs.notify_water_back}
-            onChange={(v) => update({ notify_water_back: v })}
-          />
-          <ChannelToggle
-            icon={Shield}
-            label="Notifications préventives (avant coupure)"
-            badge={caps.preventiveNotifications ? "Pro" : undefined}
-            locked={!caps.preventiveNotifications}
-            checked={prefs.notify_preventive}
-            onChange={(v) => update({ notify_preventive: v })}
-          />
-        </div>
-      </div>
-
-      {/* Heures silencieuses */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Heures silencieuses (optionnel)</p>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="qh-start" className="text-[11px]">Début</Label>
+      {/* Téléphone : visible uniquement pour Pro / Business (canaux SMS / WhatsApp accessibles) */}
+      {(caps.smsEnabled || caps.whatsappEnabled) && (
+        <div className="rounded-xl border border-border bg-muted/30 p-4">
+          <Label htmlFor="phone" className="text-xs flex items-center gap-1.5">
+            <Phone className="h-3.5 w-3.5" /> Numéro de téléphone (SMS / WhatsApp)
+          </Label>
+          <div className="mt-2 flex gap-2">
             <Input
-              id="qh-start"
-              type="time"
-              value={prefs.quiet_hours_start ?? ""}
-              onChange={(e) => update({ quiet_hours_start: e.target.value || null })}
+              id="phone"
+              type="tel"
+              placeholder="+590 690 12 34 56"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              maxLength={20}
+              className="flex-1"
             />
-          </div>
-          <div>
-            <Label htmlFor="qh-end" className="text-[11px]">Fin</Label>
-            <Input
-              id="qh-end"
-              type="time"
-              value={prefs.quiet_hours_end ?? ""}
-              onChange={(e) => update({ quiet_hours_end: e.target.value || null })}
-            />
-          </div>
-        </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Aucune notification non urgente ne sera envoyée sur cette plage.
-        </p>
-      </div>
-
-      {/* Délai préventif */}
-      {prefs.notify_preventive && caps.preventiveNotifications && (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Clock className="h-3 w-3" /> Délai préventif
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {[1, 2, 3, 6, 12, 24, 48].map((h) => {
-              const active = prefs.preventive_hours_before === h;
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => update({ preventive_hours_before: h })}
-                  className={`px-2.5 py-1 rounded-full border text-xs transition ${
-                    active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-card hover:border-primary/40"
-                  }`}
-                >
-                  {h}h avant
-                </button>
-              );
-            })}
+            <Button onClick={savePhone} disabled={savingPhone || phone.trim() === (profile.data?.phone ?? "")}>
+              {savingPhone ? "…" : "Enregistrer"}
+            </Button>
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Vous serez prévenu(e) <strong>{prefs.preventive_hours_before}h</strong> avant chaque coupure programmée.
+            Format international (ex : <code>+590690123456</code>). Utilisé uniquement pour vos alertes.
           </p>
+          {needsPhoneForActiveChannel && (
+            <p className="mt-2 text-[11px] text-warning-foreground bg-warning/10 border border-warning/30 rounded px-2 py-1">
+              ⚠️ Renseignez un numéro pour recevoir vos alertes SMS / WhatsApp.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* MATRICE événement × canal */}
+      <NotifMatrix prefs={prefs} caps={caps} update={update} />
+
+      {/* Délais préventifs (sous le tableau) */}
+      {(caps.preventiveNotifications) && (prefs.notify_preventive || prefs.notify_preventive_water_back) && (
+        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-4">
+          {prefs.notify_preventive && (
+            <DelayPicker
+              icon={DropletOff}
+              title="Délai avant une coupure"
+              value={prefs.preventive_hours_before}
+              options={[1, 2, 3, 6, 12, 24, 48]}
+              onChange={(h) => update({ preventive_hours_before: h })}
+              suffix="h avant"
+              hint={`Vous serez prévenu(e) ${prefs.preventive_hours_before}h avant chaque coupure programmée.`}
+            />
+          )}
+          {prefs.notify_preventive_water_back && (
+            <DelayPicker
+              icon={Droplet}
+              title="Délai avant le retour de l'eau"
+              value={prefs.preventive_water_back_hours_before}
+              options={[1, 2, 3, 6]}
+              onChange={(h) => update({ preventive_water_back_hours_before: h })}
+              suffix="h avant"
+              hint={`Vous serez prévenu(e) ${prefs.preventive_water_back_hours_before}h avant le retour estimé pour anticiper (remplir réservoirs, etc.).`}
+            />
+          )}
         </div>
       )}
 
@@ -321,50 +244,192 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   );
 }
 
-function ChannelToggle({
-  icon: Icon,
-  label,
-  badge,
-  locked,
-  checked,
-  onChange,
+/** Matrice événement × canal. Le bloc préventif est verrouillé pour le plan gratuit. */
+function NotifMatrix({
+  prefs,
+  caps,
+  update,
 }: {
-  icon?: typeof Mail;
-  label: string;
-  badge?: string;
-  locked?: boolean;
-  checked: boolean;
-  onChange: (v: boolean) => void;
+  prefs: Prefs;
+  caps: ReturnType<() => (typeof PLAN_CAPS)["free"]>;
+  update: (patch: Partial<Prefs>) => void;
 }) {
-  if (locked) {
-    return (
-      <Link
-        to="/abonnements"
-        className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-sm hover:border-primary/40 transition"
-      >
-        <span className="flex items-center gap-2 text-muted-foreground">
-          {Icon && <Icon className="h-4 w-4" />}
-          {label}
-        </span>
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary">
-          <Lock className="h-3 w-3" /> {badge ?? "Pro"}
-        </span>
-      </Link>
-    );
-  }
+  type EventDef = {
+    key: "outage_start" | "water_back" | "preventive" | "preventive_water_back";
+    label: string;
+    icon: typeof Mail;
+    enabledKey: keyof Prefs;
+    locked?: boolean;
+    badge?: string;
+    desc?: string;
+  };
+  const events: EventDef[] = [
+    { key: "outage_start", label: "Début de coupure", icon: DropletOff, enabledKey: "notify_outage_start", desc: "Au moment où l'eau est coupée." },
+    { key: "water_back", label: "Retour de l'eau", icon: Droplet, enabledKey: "notify_water_back", desc: "Quand l'eau revient." },
+    { key: "preventive", label: "Préventif (avant coupure)", icon: Clock, enabledKey: "notify_preventive", locked: !caps.preventiveNotifications, badge: "Pro", desc: "Anticipez en remplissant des réserves." },
+    { key: "preventive_water_back", label: "Préventif (avant retour)", icon: Clock, enabledKey: "notify_preventive_water_back", locked: !caps.preventiveNotifications, badge: "Pro", desc: "Soyez prêt(e) avant que l'eau revienne." },
+  ];
+  const channels = [
+    { key: "email" as const, label: "Email", icon: Mail, enabledKey: "email_enabled" as keyof Prefs, locked: false, badge: "Inclus" },
+    { key: "sms" as const, label: "SMS", icon: MessageSquare, enabledKey: "sms_enabled" as keyof Prefs, locked: !caps.smsEnabled, badge: "Pro" },
+    { key: "whatsapp" as const, label: "WhatsApp", icon: MessageSquare, enabledKey: "whatsapp_enabled" as keyof Prefs, locked: !caps.whatsappEnabled, badge: "Pro" },
+  ];
+
   return (
-    <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm cursor-pointer hover:bg-muted/30 transition">
-      <span className="flex items-center gap-2">
-        {Icon && <Icon className="h-4 w-4 text-primary" />}
-        {label}
-        {badge && <span className="text-[10px] rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground">{badge}</span>}
-      </span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-7 accent-primary cursor-pointer"
-      />
-    </label>
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+        Choisissez quoi recevoir, et comment
+      </p>
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-muted/40 text-muted-foreground">
+              <th className="text-left px-3 py-2 font-medium">Événement</th>
+              {channels.map((c) => (
+                <th key={c.key} className="px-2 py-2 font-medium text-center w-[68px]">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <c.icon className="h-3.5 w-3.5 text-primary" />
+                    <span>{c.label}</span>
+                    {c.locked ? (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] text-primary"><Lock className="h-2.5 w-2.5" />{c.badge}</span>
+                    ) : (
+                      <span className="text-[9px] text-muted-foreground/70">{c.badge}</span>
+                    )}
+                  </div>
+                </th>
+              ))}
+              <th className="px-2 py-2 font-medium text-center w-[64px]">Activé</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {events.map((ev) => {
+              const enabled = prefs[ev.enabledKey] as boolean;
+              if (ev.locked) {
+                return (
+                  <tr key={ev.key} className="bg-muted/20">
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <ev.icon className="h-3.5 w-3.5" />
+                        <span className="font-medium">{ev.label}</span>
+                      </div>
+                      {ev.desc && <p className="text-[10px] text-muted-foreground/70 mt-0.5 ml-5">{ev.desc}</p>}
+                    </td>
+                    <td colSpan={channels.length + 1} className="px-2 py-2.5 text-center">
+                      <Link to="/abonnements" className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">
+                        <Lock className="h-3 w-3" /> Réservé Pro — débloquer
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={ev.key}>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <ev.icon className="h-3.5 w-3.5 text-primary" />
+                      <span className="font-medium">{ev.label}</span>
+                    </div>
+                    {ev.desc && <p className="text-[10px] text-muted-foreground mt-0.5 ml-5">{ev.desc}</p>}
+                  </td>
+                  {channels.map((c) => {
+                    const channelOn = prefs[c.enabledKey] as boolean;
+                    const cellActive = enabled && channelOn && !c.locked;
+                    return (
+                      <td key={c.key} className="text-center align-middle">
+                        {c.locked ? (
+                          <Lock className="h-3 w-3 text-muted-foreground/40 mx-auto" aria-label="Verrouillé" />
+                        ) : (
+                          <span className={`inline-block h-2 w-2 rounded-full ${cellActive ? "bg-primary" : "bg-border"}`} aria-hidden />
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="text-center align-middle px-2">
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={(e) => update({ [ev.enabledKey]: e.target.checked } as Partial<Prefs>)}
+                      className="h-4 w-4 accent-primary cursor-pointer"
+                      aria-label={`Activer ${ev.label}`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+            {/* Ligne de toggles canaux globaux (pour activer/désactiver Email / SMS / WhatsApp d'un coup) */}
+            <tr className="bg-muted/20">
+              <td className="px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                Canaux actifs
+              </td>
+              {channels.map((c) => (
+                <td key={c.key} className="text-center align-middle">
+                  {c.locked ? (
+                    <Link to="/abonnements" className="text-[10px] text-primary underline">débloquer</Link>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={prefs[c.enabledKey] as boolean}
+                      onChange={(e) => update({ [c.enabledKey]: e.target.checked } as Partial<Prefs>)}
+                      className="h-3.5 w-3.5 accent-primary cursor-pointer"
+                      aria-label={`Activer le canal ${c.label}`}
+                    />
+                  )}
+                </td>
+              ))}
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Cochez d'abord les événements souhaités, puis les canaux à utiliser. Un événement n'est envoyé que si son canal est aussi actif.
+      </p>
+    </div>
+  );
+}
+
+function DelayPicker({
+  icon: Icon,
+  title,
+  value,
+  options,
+  onChange,
+  suffix,
+  hint,
+}: {
+  icon: typeof Mail;
+  title: string;
+  value: number;
+  options: number[];
+  onChange: (h: number) => void;
+  suffix: string;
+  hint: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Icon className="h-3 w-3" /> {title}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((h) => {
+          const active = value === h;
+          return (
+            <button
+              key={h}
+              type="button"
+              onClick={() => onChange(h)}
+              className={`px-2.5 py-1 rounded-full border text-xs transition ${
+                active
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card hover:border-primary/40"
+              }`}
+            >
+              {h}{suffix}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">{hint}</p>
+    </div>
   );
 }
