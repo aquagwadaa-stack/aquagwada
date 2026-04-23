@@ -443,6 +443,33 @@ export type Database = {
         }
         Relationships: []
       }
+      trial_email_reminders: {
+        Row: {
+          id: string
+          kind: string
+          sent_at: string
+          subscription_id: string
+          trial_ends_at: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          kind?: string
+          sent_at?: string
+          subscription_id: string
+          trial_ends_at: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          kind?: string
+          sent_at?: string
+          subscription_id?: string
+          trial_ends_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_communes: {
         Row: {
           commune_id: string
@@ -501,6 +528,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      expire_overdue_trials: { Args: never; Returns: number }
       get_commune_status: {
         Args: { _commune_id: string }
         Returns: {
@@ -511,6 +539,7 @@ export type Database = {
           water_back_at: string
         }[]
       }
+      get_effective_subscription: { Args: never; Returns: Json }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -518,6 +547,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      start_pro_trial: { Args: { _days?: number }; Returns: Json }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"

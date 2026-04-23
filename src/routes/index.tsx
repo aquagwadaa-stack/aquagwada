@@ -8,12 +8,16 @@ import { DayTimeline } from "@/components/outages/Timeline";
 import { Droplets, MapPin, Bell, ShieldCheck, Activity, Clock, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
 import { ForecastTeaserLocked } from "@/components/upsell/ForecastTeaser";
+import { useAuth } from "@/providers/AuthProvider";
+import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
+import { canSeeForecasts, type Tier } from "@/lib/subscription";
 
 export const Route = createFileRoute("/")({
   component: Index,
 });
 
 function Index() {
+  const { user } = useAuth();
   const today = new Date();
   const start = new Date(today); start.setHours(0, 0, 0, 0);
   const end = new Date(today); end.setHours(23, 59, 59, 999);
@@ -22,6 +26,14 @@ function Index() {
     queryKey: ["outages-today", start.toISOString(), end.toISOString()],
     queryFn: () => fetchOutagesWindow(start.toISOString(), end.toISOString()),
   });
+  const sub = useQuery({
+    queryKey: ["subscription", user?.id ?? "anon"],
+    queryFn: () => fetchEffectiveSubscription(user!.id),
+    enabled: !!user,
+  });
+  const tier: Tier = (sub.data?.tier as Tier) ?? "free";
+  // Visiteurs et plan gratuit : on bloque la timeline après "maintenant".
+  const lockTimeline = !canSeeForecasts(tier);
 
   return (
     <AppShell>
@@ -69,7 +81,23 @@ function Index() {
         {todayOutages.isLoading ? (
           <div className="rounded-2xl border border-border bg-card h-48 animate-pulse" />
         ) : (
-          <DayTimeline date={today} outages={todayOutages.data ?? []} />
+          <DayTimeline
+            date={today}
+            outages={todayOutages.data ?? []}
+            lockedAfterNow={lockTimeline}
+            lockedCtaText="Essai gratuit Pro 7j · sans CB"
+            lockedCtaTo="/abonnements"
+            teaserPercentOfRest={0.2}
+          />
+        )}
+        {lockTimeline && (
+          <p className="mt-3 text-center text-xs text-muted-foreground">
+            La fin de journée est masquée pour les visiteurs.{" "}
+            <Link to="/abonnements" className="text-primary font-medium underline">
+              Essai gratuit 7 jours
+            </Link>{" "}
+            pour tout voir, sans engagement.
+          </p>
         )}
       </section>
 
