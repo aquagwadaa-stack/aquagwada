@@ -21,7 +21,9 @@ type Pref = {
   notify_outage_start: boolean;
   notify_water_back: boolean;
   notify_preventive: boolean;
+  notify_preventive_water_back: boolean;
   preventive_hours_before: number;
+  preventive_water_back_hours_before: number;
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
 };
