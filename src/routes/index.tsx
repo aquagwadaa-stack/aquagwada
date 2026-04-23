@@ -134,12 +134,31 @@ function Index() {
           </div>
           <Link to="/carte" className="text-sm text-primary hover:underline">Voir la carte →</Link>
         </div>
+        {restrictToFavs && favIds.length > 0 && (
+          <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs flex items-center gap-2">
+            <Lock className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="flex-1">
+              Affichage limité à vos {favIds.length} commune{favIds.length > 1 ? "s" : ""} favorite{favIds.length > 1 ? "s" : ""}.{" "}
+              {tier === "free" ? (
+                <><Link to="/abonnements" className="text-primary font-medium underline">Passez à Pro</Link>{" "}pour suivre jusqu'à 5 communes.</>
+              ) : tier === "pro" ? (
+                <><Link to="/abonnements" className="text-primary font-medium underline">Passez à Business</Link>{" "}pour toute la Guadeloupe.</>
+              ) : null}
+            </span>
+          </div>
+        )}
+        {noFavs && (
+          <div className="mb-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm flex flex-wrap items-center gap-3">
+            <span className="flex-1">Choisissez votre commune favorite pour voir les coupures qui vous concernent.</span>
+            <Link to="/ma-commune" className="text-xs font-semibold text-primary underline">Choisir ma commune</Link>
+          </div>
+        )}
         {todayOutages.isLoading ? (
           <div className="rounded-2xl border border-border bg-card h-48 animate-pulse" />
         ) : (
           <DayTimeline
             date={today}
-            outages={todayOutages.data ?? []}
+            outages={todayFiltered}
             lockedAfterNow={lockTimeline}
             lockedCtaText="Essai gratuit Pro 7j · sans CB"
             lockedCtaTo="/abonnements"
@@ -176,10 +195,18 @@ function Index() {
 
       {/* FEATURES */}
       <section className="bg-secondary/40 border-y border-border/60">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 grid md:grid-cols-3 gap-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Feature icon={MapPin} title="Carte temps réel" desc="Visualisez d'un coup d'œil les communes touchées et la sévérité de chaque coupure." />
           <Feature icon={Bell} title="Alertes intelligentes" desc="Email, SMS et WhatsApp — au début de la coupure, à son retour, ou en préventif." />
           <Feature icon={ShieldCheck} title="Sources vérifiées" desc="Données officielles agrégées avec un score de fiabilité, complétées par les signalements citoyens." />
+          <div className="rounded-2xl border-2 border-accent/40 bg-gradient-to-br from-accent/10 to-primary/5 p-6 shadow-soft flex flex-col">
+            <span className="grid h-10 w-10 place-items-center rounded-lg bg-accent text-accent-foreground"><Megaphone className="h-5 w-5" /></span>
+            <h3 className="mt-4 font-display text-lg font-semibold">Signaler en 10 secondes</h3>
+            <p className="mt-1 text-sm text-muted-foreground flex-1">Eau coupée, retour de l'eau, travaux : aidez vos voisins. Chaque signalement améliore la fiabilité.</p>
+            <Button asChild size="sm" className="mt-4 self-start bg-accent text-accent-foreground hover:bg-accent/90">
+              <Link to="/carte">Signaler maintenant</Link>
+            </Button>
+          </div>
         </div>
       </section>
 
