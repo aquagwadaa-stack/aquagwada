@@ -122,9 +122,26 @@ function PricingPage() {
                   <li key={f} className="flex items-start gap-2"><Check className="h-4 w-4 text-success mt-0.5 shrink-0" /><span>{f}</span></li>
                 ))}
               </ul>
-              <Button asChild className={`mt-6 w-full ${i === 1 ? "bg-gradient-ocean text-primary-foreground" : ""}`} variant={i === 1 ? "default" : "outline"}>
-                <Link to="/connexion">{p.tier === "free" ? "Commencer" : p.tier === "business" ? "Nous contacter" : "Essayer 7 jours"}</Link>
-              </Button>
+              {p.tier === "pro" ? (
+                trialActive ? (
+                  <Button disabled className="mt-6 w-full" variant="outline">
+                    Essai en cours
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleStartTrial}
+                    disabled={busy}
+                    className={`mt-6 w-full ${i === 1 ? "bg-gradient-ocean text-primary-foreground" : ""}`}
+                    variant={i === 1 ? "default" : "outline"}
+                  >
+                    {busy ? "…" : "Démarrer mon essai 7 jours"}
+                  </Button>
+                )
+              ) : (
+                <Button asChild className={`mt-6 w-full ${i === 1 ? "bg-gradient-ocean text-primary-foreground" : ""}`} variant={i === 1 ? "default" : "outline"}>
+                  <Link to="/connexion">{p.tier === "free" ? "Commencer" : "Nous contacter"}</Link>
+                </Button>
+              )}
             </div>
           ))}
         </div>
