@@ -141,146 +141,65 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
         <h2 className="font-display text-lg font-semibold">Notifications</h2>
       </div>
 
-      {/* Téléphone */}
-      <div className="rounded-xl border border-border bg-muted/30 p-4">
-        <Label htmlFor="phone" className="text-xs flex items-center gap-1.5">
-          <Phone className="h-3.5 w-3.5" /> Numéro de téléphone (pour SMS / WhatsApp)
-        </Label>
-        <div className="mt-2 flex gap-2">
-          <Input
-            id="phone"
-            type="tel"
-            placeholder="+590 690 12 34 56"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            maxLength={20}
-            className="flex-1"
-          />
-          <Button onClick={savePhone} disabled={savingPhone || phone.trim() === (profile.data?.phone ?? "")}>
-            {savingPhone ? "…" : "Enregistrer"}
-          </Button>
-        </div>
-        <p className="mt-1.5 text-[11px] text-muted-foreground">
-          Format international requis (ex : <code>+590690123456</code>). Utilisé uniquement pour vos alertes.
-        </p>
-        {needsPhoneForActiveChannel && (
-          <p className="mt-2 text-[11px] text-warning-foreground bg-warning/10 border border-warning/30 rounded px-2 py-1">
-            ⚠️ Renseignez un numéro pour recevoir vos alertes SMS / WhatsApp.
-          </p>
-        )}
-      </div>
-
-      {/* Canaux */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Canaux</p>
-        <div className="space-y-2">
-          <ChannelToggle
-            icon={Mail}
-            label="Email"
-            badge="Inclus"
-            checked={prefs.email_enabled}
-            onChange={(v) => update({ email_enabled: v })}
-          />
-          <ChannelToggle
-            icon={MessageSquare}
-            label="SMS"
-            badge={caps.smsEnabled ? "Pro" : undefined}
-            locked={!caps.smsEnabled}
-            checked={prefs.sms_enabled}
-            onChange={(v) => update({ sms_enabled: v })}
-          />
-          <ChannelToggle
-            icon={MessageSquare}
-            label="WhatsApp"
-            badge={caps.whatsappEnabled ? "Pro" : undefined}
-            locked={!caps.whatsappEnabled}
-            checked={prefs.whatsapp_enabled}
-            onChange={(v) => update({ whatsapp_enabled: v })}
-          />
-        </div>
-      </div>
-
-      {/* Événements */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Événements</p>
-        <div className="space-y-2">
-          <ChannelToggle
-            label="Début de coupure"
-            checked={prefs.notify_outage_start}
-            onChange={(v) => update({ notify_outage_start: v })}
-          />
-          <ChannelToggle
-            label="Retour de l'eau"
-            checked={prefs.notify_water_back}
-            onChange={(v) => update({ notify_water_back: v })}
-          />
-          <ChannelToggle
-            icon={Shield}
-            label="Notifications préventives (avant coupure)"
-            badge={caps.preventiveNotifications ? "Pro" : undefined}
-            locked={!caps.preventiveNotifications}
-            checked={prefs.notify_preventive}
-            onChange={(v) => update({ notify_preventive: v })}
-          />
-        </div>
-      </div>
-
-      {/* Heures silencieuses */}
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">Heures silencieuses (optionnel)</p>
-        <div className="grid grid-cols-2 gap-2">
-          <div>
-            <Label htmlFor="qh-start" className="text-[11px]">Début</Label>
+      {/* Téléphone : visible uniquement pour Pro / Business (canaux SMS / WhatsApp accessibles) */}
+      {(caps.smsEnabled || caps.whatsappEnabled) && (
+        <div className="rounded-xl border border-border bg-muted/30 p-4">
+          <Label htmlFor="phone" className="text-xs flex items-center gap-1.5">
+            <Phone className="h-3.5 w-3.5" /> Numéro de téléphone (SMS / WhatsApp)
+          </Label>
+          <div className="mt-2 flex gap-2">
             <Input
-              id="qh-start"
-              type="time"
-              value={prefs.quiet_hours_start ?? ""}
-              onChange={(e) => update({ quiet_hours_start: e.target.value || null })}
+              id="phone"
+              type="tel"
+              placeholder="+590 690 12 34 56"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              maxLength={20}
+              className="flex-1"
             />
-          </div>
-          <div>
-            <Label htmlFor="qh-end" className="text-[11px]">Fin</Label>
-            <Input
-              id="qh-end"
-              type="time"
-              value={prefs.quiet_hours_end ?? ""}
-              onChange={(e) => update({ quiet_hours_end: e.target.value || null })}
-            />
-          </div>
-        </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">
-          Aucune notification non urgente ne sera envoyée sur cette plage.
-        </p>
-      </div>
-
-      {/* Délai préventif */}
-      {prefs.notify_preventive && caps.preventiveNotifications && (
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-            <Clock className="h-3 w-3" /> Délai préventif
-          </p>
-          <div className="flex flex-wrap gap-1.5">
-            {[1, 2, 3, 6, 12, 24, 48].map((h) => {
-              const active = prefs.preventive_hours_before === h;
-              return (
-                <button
-                  key={h}
-                  type="button"
-                  onClick={() => update({ preventive_hours_before: h })}
-                  className={`px-2.5 py-1 rounded-full border text-xs transition ${
-                    active
-                      ? "border-primary bg-primary text-primary-foreground"
-                      : "border-border bg-card hover:border-primary/40"
-                  }`}
-                >
-                  {h}h avant
-                </button>
-              );
-            })}
+            <Button onClick={savePhone} disabled={savingPhone || phone.trim() === (profile.data?.phone ?? "")}>
+              {savingPhone ? "…" : "Enregistrer"}
+            </Button>
           </div>
           <p className="mt-1.5 text-[11px] text-muted-foreground">
-            Vous serez prévenu(e) <strong>{prefs.preventive_hours_before}h</strong> avant chaque coupure programmée.
+            Format international (ex : <code>+590690123456</code>). Utilisé uniquement pour vos alertes.
           </p>
+          {needsPhoneForActiveChannel && (
+            <p className="mt-2 text-[11px] text-warning-foreground bg-warning/10 border border-warning/30 rounded px-2 py-1">
+              ⚠️ Renseignez un numéro pour recevoir vos alertes SMS / WhatsApp.
+            </p>
+          )}
+        </div>
+      )}
+
+      {/* MATRICE événement × canal */}
+      <NotifMatrix prefs={prefs} caps={caps} update={update} />
+
+      {/* Délais préventifs (sous le tableau) */}
+      {(caps.preventiveNotifications) && (prefs.notify_preventive || prefs.notify_preventive_water_back) && (
+        <div className="rounded-xl border border-border bg-muted/20 p-4 space-y-4">
+          {prefs.notify_preventive && (
+            <DelayPicker
+              icon={DropletOff}
+              title="Délai avant une coupure"
+              value={prefs.preventive_hours_before}
+              options={[1, 2, 3, 6, 12, 24, 48]}
+              onChange={(h) => update({ preventive_hours_before: h })}
+              suffix="h avant"
+              hint={`Vous serez prévenu(e) ${prefs.preventive_hours_before}h avant chaque coupure programmée.`}
+            />
+          )}
+          {prefs.notify_preventive_water_back && (
+            <DelayPicker
+              icon={Droplet}
+              title="Délai avant le retour de l'eau"
+              value={prefs.preventive_water_back_hours_before}
+              options={[1, 2, 3, 6]}
+              onChange={(h) => update({ preventive_water_back_hours_before: h })}
+              suffix="h avant"
+              hint={`Vous serez prévenu(e) ${prefs.preventive_water_back_hours_before}h avant le retour estimé pour anticiper (remplir réservoirs, etc.).`}
+            />
+          )}
         </div>
       )}
 
