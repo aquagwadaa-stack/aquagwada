@@ -1,17 +1,18 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useMemo } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCommunes } from "@/lib/queries/communes";
 import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
 import { DayTimeline } from "@/components/outages/Timeline";
 import { StatusBadge } from "@/components/outages/StatusBadge";
-import { Activity, Droplets } from "lucide-react";
+import { Activity, Droplets, Lock } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
 import { canSeeForecasts, type Tier } from "@/lib/subscription";
-import { ReportDialog } from "@/components/reports/ReportDialog";
-import { useState } from "react";
+import { ReportBlock } from "@/components/reports/ReportBlock";
+import { Link } from "@tanstack/react-router";
+import { supabase } from "@/integrations/supabase/client";
 
 const OutageMap = lazy(() => import("@/components/map/OutageMap").then((m) => ({ default: m.OutageMap })));
 
