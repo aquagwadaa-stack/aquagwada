@@ -7,6 +7,7 @@ import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
 import { DayTimeline } from "@/components/outages/Timeline";
 import { Droplets, MapPin, Bell, ShieldCheck, Activity, Clock, Sparkles } from "lucide-react";
 import { motion } from "framer-motion";
+import { ForecastTeaserLocked } from "@/components/upsell/ForecastTeaser";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -72,6 +73,19 @@ function Index() {
         )}
       </section>
 
+      {/* PRÉVISIONS — verrouillé pour visiteurs / free, CTA essai gratuit */}
+      <section className="mx-auto max-w-7xl px-4 sm:px-6 pb-12">
+        <div className="flex items-end justify-between mb-6">
+          <div>
+            <h2 className="font-display text-2xl md:text-3xl font-semibold">Demain et après ?</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Prévisions à 14 jours basées sur l'historique. Inclus dans l'essai gratuit Pro.
+            </p>
+          </div>
+        </div>
+        <ForecastTeaserLocked />
+      </section>
+
       {/* FEATURES */}
       <section className="bg-secondary/40 border-y border-border/60">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 grid md:grid-cols-3 gap-6">
@@ -86,9 +100,9 @@ function Index() {
         <div className="rounded-3xl bg-gradient-ocean p-10 md:p-14 text-primary-foreground text-center shadow-glow">
           <Droplets className="h-10 w-10 mx-auto opacity-80" />
           <h2 className="font-display text-3xl md:text-4xl font-bold mt-4">Ne soyez plus pris au dépourvu</h2>
-          <p className="mt-3 text-primary-foreground/85 max-w-xl mx-auto">Créez votre compte gratuit et recevez les alertes pour votre commune. 7 jours d'essai Pro offerts, sans carte.</p>
+          <p className="mt-3 text-primary-foreground/85 max-w-xl mx-auto">Créez votre compte gratuit et recevez les alertes pour votre commune. <strong>7 jours d'essai Pro offerts</strong>, sans carte bancaire, sans engagement.</p>
           <Button asChild size="lg" className="mt-6 bg-background text-foreground hover:bg-background/90">
-            <Link to="/abonnements">Découvrir les forfaits</Link>
+            <Link to="/abonnements">Démarrer l'essai gratuit</Link>
           </Button>
         </div>
       </section>

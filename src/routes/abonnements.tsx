@@ -1,9 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Lock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/providers/AuthProvider";
+import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
+import { toast } from "sonner";
+import { useState } from "react";
 
 type PlanRow = {
   id: string;
@@ -42,6 +46,17 @@ const FEATURE_MATRIX: Array<{ key: string; label: string; pick: (p: PlanRow) => 
 ];
 
 function PricingPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  const sub = useQuery({
+    queryKey: ["subscription", user?.id ?? "anon"],
+    queryFn: () => fetchEffectiveSubscription(user!.id),
+    enabled: !!user,
+  });
+
   const plans = useQuery({
     queryKey: ["plans"],
     queryFn: async () => {
@@ -54,6 +69,28 @@ function PricingPage() {
       return (data ?? []) as unknown as PlanRow[];
     },
   });
+
+  async function handleStartTrial() {
+    if (!user) {
+      navigate({ to: "/connexion" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await startProTrial(user.id, 7);
+      if (!r.ok) {
+        toast.error(r.reason ?? "Impossible de démarrer l'essai");
+      } else {
+        toast.success("Essai Pro démarré ! 7 jours pour tout tester.");
+        qc.invalidateQueries({ queryKey: ["subscription", user.id] });
+        navigate({ to: "/ma-commune" });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const trialActive = !!sub.data?.trialActive;
 
   return (
     <AppShell>
@@ -85,9 +122,26 @@ function PricingPage() {
                   <li key={f} className="flex items-start gap-2"><Check className="h-4 w-4 text-success mt-0.5 shrink-0" /><span>{f}</span></li>
                 ))}
               </ul>
-              <Button asChild className={`mt-6 w-full ${i === 1 ? "bg-gradient-ocean text-primary-foreground" : ""}`} variant={i === 1 ? "default" : "outline"}>
-                <Link to="/connexion">{p.tier === "free" ? "Commencer" : p.tier === "business" ? "Nous contacter" : "Essayer 7 jours"}</Link>
-              </Button>
+              {p.tier === "pro" ? (
+                trialActive ? (
+                  <Button disabled className="mt-6 w-full" variant="outline">
+                    Essai en cours
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={handleStartTrial}
+                    disabled={busy}
+                    className={`mt-6 w-full ${i === 1 ? "bg-gradient-ocean text-primary-foreground" : ""}`}
+                    variant={i === 1 ? "default" : "outline"}
+                  >
+                    {busy ? "…" : "Démarrer mon essai 7 jours"}
+                  </Button>
+                )
+              ) : (
+                <Button asChild className={`mt-6 w-full ${i === 1 ? "bg-gradient-ocean text-primary-foreground" : ""}`} variant={i === 1 ? "default" : "outline"}>
+                  <Link to="/connexion">{p.tier === "free" ? "Commencer" : "Nous contacter"}</Link>
+                </Button>
+              )}
             </div>
           ))}
         </div>

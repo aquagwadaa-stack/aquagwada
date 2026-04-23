@@ -11,7 +11,7 @@ export const PLAN_CAPS: Record<Tier, {
   apiAccess: boolean;
 }> = {
   free:     { maxCommunes: 1,   forecastDays: 0,  historyDays: 7,    smsEnabled: false, whatsappEnabled: false, preventiveNotifications: false, apiAccess: false },
-  pro:      { maxCommunes: 10,  forecastDays: 14, historyDays: 365,  smsEnabled: true,  whatsappEnabled: true,  preventiveNotifications: true,  apiAccess: false },
+  pro:      { maxCommunes: 5,   forecastDays: 14, historyDays: 365,  smsEnabled: true,  whatsappEnabled: true,  preventiveNotifications: true,  apiAccess: false },
   business: { maxCommunes: 100, forecastDays: 14, historyDays: 1825, smsEnabled: true,  whatsappEnabled: true,  preventiveNotifications: true,  apiAccess: true  },
 };
 
