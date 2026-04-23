@@ -36,11 +36,13 @@ export function ReportDialog({
   communeName,
   triggerVariant = "outline",
   triggerLabel = "Signaler",
+  fullWidth = false,
 }: {
   communeId: string;
   communeName?: string;
   triggerVariant?: "outline" | "default" | "ghost";
   triggerLabel?: string;
+  fullWidth?: boolean;
 }) {
   const { user } = useAuth();
   const qc = useQueryClient();
@@ -99,7 +101,7 @@ export function ReportDialog({
 
   if (!user) {
     return (
-      <Button asChild variant={triggerVariant} size="sm">
+      <Button asChild variant={triggerVariant} size="sm" className={fullWidth ? "w-full" : undefined}>
         <Link to="/connexion">
           <Megaphone className="h-4 w-4 mr-1.5" />
           {triggerLabel}
@@ -111,7 +113,7 @@ export function ReportDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button variant={triggerVariant} size="sm">
+        <Button variant={triggerVariant} size="sm" className={fullWidth ? "w-full bg-accent text-accent-foreground hover:bg-accent/90" : undefined}>
           <Megaphone className="h-4 w-4 mr-1.5" />
           {triggerLabel}
         </Button>

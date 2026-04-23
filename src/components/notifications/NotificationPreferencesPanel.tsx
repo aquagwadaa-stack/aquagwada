@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { toast } from "sonner";
-import { Bell, Mail, MessageSquare, Phone, Shield, Lock } from "lucide-react";
+import { Bell, Mail, MessageSquare, Phone, Shield, Lock, Clock } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -232,6 +232,37 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
           Aucune notification non urgente ne sera envoyée sur cette plage.
         </p>
       </div>
+
+      {/* Délai préventif */}
+      {prefs.notify_preventive && caps.preventiveNotifications && (
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+            <Clock className="h-3 w-3" /> Délai préventif
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {[1, 2, 3, 6, 12, 24, 48].map((h) => {
+              const active = prefs.preventive_hours_before === h;
+              return (
+                <button
+                  key={h}
+                  type="button"
+                  onClick={() => update({ preventive_hours_before: h })}
+                  className={`px-2.5 py-1 rounded-full border text-xs transition ${
+                    active
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : "border-border bg-card hover:border-primary/40"
+                  }`}
+                >
+                  {h}h avant
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1.5 text-[11px] text-muted-foreground">
+            Vous serez prévenu(e) <strong>{prefs.preventive_hours_before}h</strong> avant chaque coupure programmée.
+          </p>
+        </div>
+      )}
     </section>
   );
 }

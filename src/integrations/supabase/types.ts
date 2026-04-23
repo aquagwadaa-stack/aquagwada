@@ -106,6 +106,39 @@ export type Database = {
           },
         ]
       }
+      notification_logs: {
+        Row: {
+          channel: string
+          dry_run: boolean
+          id: string
+          kind: string
+          outage_id: string
+          payload: Json | null
+          sent_at: string
+          user_id: string
+        }
+        Insert: {
+          channel: string
+          dry_run?: boolean
+          id?: string
+          kind: string
+          outage_id: string
+          payload?: Json | null
+          sent_at?: string
+          user_id: string
+        }
+        Update: {
+          channel?: string
+          dry_run?: boolean
+          id?: string
+          kind?: string
+          outage_id?: string
+          payload?: Json | null
+          sent_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notification_preferences: {
         Row: {
           email_enabled: boolean
@@ -314,6 +347,7 @@ export type Database = {
           id: string
           latitude: number | null
           longitude: number | null
+          processed_at: string | null
           status: Database["public"]["Enums"]["report_status"]
           user_id: string | null
         }
@@ -324,6 +358,7 @@ export type Database = {
           id?: string
           latitude?: number | null
           longitude?: number | null
+          processed_at?: string | null
           status: Database["public"]["Enums"]["report_status"]
           user_id?: string | null
         }
@@ -334,6 +369,7 @@ export type Database = {
           id?: string
           latitude?: number | null
           longitude?: number | null
+          processed_at?: string | null
           status?: Database["public"]["Enums"]["report_status"]
           user_id?: string | null
         }

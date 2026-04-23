@@ -5,13 +5,16 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
 import { DayTimeline } from "@/components/outages/Timeline";
-import { Droplets, MapPin, Bell, ShieldCheck, Activity, Clock, Sparkles } from "lucide-react";
+import { Droplets, MapPin, Bell, ShieldCheck, Activity, Clock, Sparkles, Megaphone, Lock } from "lucide-react";
 import { motion } from "framer-motion";
 import { ForecastTeaserLocked } from "@/components/upsell/ForecastTeaser";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
 import { canSeeForecasts, type Tier } from "@/lib/subscription";
 import { fetchForecastsRange } from "@/lib/queries/forecasts";
+import { useMemo } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { ReportBlock } from "@/components/reports/ReportBlock";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -19,31 +22,73 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const { user } = useAuth();
-  const today = new Date();
-  const start = new Date(today); start.setHours(0, 0, 0, 0);
-  const end = new Date(today); end.setHours(23, 59, 59, 999);
-  const ongoing = useQuery({ queryKey: ["ongoing"], queryFn: fetchOngoingOutages });
+
+  // Bornes de date stabilisées (arrondies au jour) pour ne pas casser le cache.
+  const today = useMemo(() => new Date(), []);
+  const { startIso, endIso } = useMemo(() => {
+    const s = new Date(); s.setHours(0, 0, 0, 0);
+    const e = new Date(); e.setHours(23, 59, 59, 999);
+    return { startIso: s.toISOString(), endIso: e.toISOString() };
+  }, []);
+
+  const ongoing = useQuery({
+    queryKey: ["ongoing"],
+    queryFn: fetchOngoingOutages,
+    staleTime: 60_000,
+  });
   const todayOutages = useQuery({
-    queryKey: ["outages-today", start.toISOString(), end.toISOString()],
-    queryFn: () => fetchOutagesWindow(start.toISOString(), end.toISOString()),
+    queryKey: ["outages-today", startIso, endIso],
+    queryFn: () => fetchOutagesWindow(startIso, endIso),
+    staleTime: 60_000,
   });
   const sub = useQuery({
     queryKey: ["subscription", user?.id ?? "anon"],
     queryFn: () => fetchEffectiveSubscription(user!.id),
     enabled: !!user,
+    staleTime: 60_000,
   });
   const tier: Tier = (sub.data?.tier as Tier) ?? "free";
   // Visiteurs et plan gratuit : on bloque la timeline après "maintenant".
   const lockTimeline = !canSeeForecasts(tier);
 
+  // Communes favorites (filtrage liste & timeline pour utilisateurs connectés non-business)
+  const favs = useQuery({
+    queryKey: ["favs-min", user?.id ?? "anon"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_communes")
+        .select("commune_id")
+        .order("position");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+  const favIds = useMemo(() => (favs.data ?? []).map((f) => f.commune_id), [favs.data]);
+  const restrictToFavs = !!user && tier !== "business";
+  const todayFiltered = useMemo(() => {
+    const list = todayOutages.data ?? [];
+    if (!restrictToFavs) return list;
+    if (favIds.length === 0) return [];
+    return list.filter((o) => favIds.includes(o.commune_id));
+  }, [todayOutages.data, restrictToFavs, favIds]);
+  const noFavs = restrictToFavs && favIds.length === 0;
+
   // Prévisions à 14j visibles uniquement pour Pro/Business (essai inclus)
   const showForecasts = canSeeForecasts(tier);
-  const fromDate = new Date(today.getTime() + 86400_000).toISOString().slice(0, 10);
-  const toDate = new Date(today.getTime() + 14 * 86400_000).toISOString().slice(0, 10);
+  const { fromDate, toDate } = useMemo(() => {
+    const t = new Date();
+    return {
+      fromDate: new Date(t.getTime() + 86400_000).toISOString().slice(0, 10),
+      toDate: new Date(t.getTime() + 14 * 86400_000).toISOString().slice(0, 10),
+    };
+  }, []);
   const forecasts = useQuery({
-    queryKey: ["forecasts-home", fromDate, toDate],
-    queryFn: () => fetchForecastsRange(fromDate, toDate),
+    queryKey: ["forecasts-home", fromDate, toDate, restrictToFavs ? favIds.join(",") : "all"],
+    queryFn: () => fetchForecastsRange(fromDate, toDate, restrictToFavs ? favIds : undefined),
     enabled: showForecasts,
+    staleTime: 5 * 60_000,
   });
 
   return (
@@ -89,12 +134,31 @@ function Index() {
           </div>
           <Link to="/carte" className="text-sm text-primary hover:underline">Voir la carte →</Link>
         </div>
+        {restrictToFavs && favIds.length > 0 && (
+          <div className="mb-4 rounded-xl border border-primary/30 bg-primary/5 p-3 text-xs flex items-center gap-2">
+            <Lock className="h-3.5 w-3.5 text-primary shrink-0" />
+            <span className="flex-1">
+              Affichage limité à vos {favIds.length} commune{favIds.length > 1 ? "s" : ""} favorite{favIds.length > 1 ? "s" : ""}.{" "}
+              {tier === "free" ? (
+                <><Link to="/abonnements" className="text-primary font-medium underline">Passez à Pro</Link>{" "}pour suivre jusqu'à 5 communes.</>
+              ) : tier === "pro" ? (
+                <><Link to="/abonnements" className="text-primary font-medium underline">Passez à Business</Link>{" "}pour toute la Guadeloupe.</>
+              ) : null}
+            </span>
+          </div>
+        )}
+        {noFavs && (
+          <div className="mb-4 rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm flex flex-wrap items-center gap-3">
+            <span className="flex-1">Choisissez votre commune favorite pour voir les coupures qui vous concernent.</span>
+            <Link to="/ma-commune" className="text-xs font-semibold text-primary underline">Choisir ma commune</Link>
+          </div>
+        )}
         {todayOutages.isLoading ? (
           <div className="rounded-2xl border border-border bg-card h-48 animate-pulse" />
         ) : (
           <DayTimeline
             date={today}
-            outages={todayOutages.data ?? []}
+            outages={todayFiltered}
             lockedAfterNow={lockTimeline}
             lockedCtaText="Essai gratuit Pro 7j · sans CB"
             lockedCtaTo="/abonnements"
@@ -131,10 +195,18 @@ function Index() {
 
       {/* FEATURES */}
       <section className="bg-secondary/40 border-y border-border/60">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 grid md:grid-cols-3 gap-6">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Feature icon={MapPin} title="Carte temps réel" desc="Visualisez d'un coup d'œil les communes touchées et la sévérité de chaque coupure." />
           <Feature icon={Bell} title="Alertes intelligentes" desc="Email, SMS et WhatsApp — au début de la coupure, à son retour, ou en préventif." />
           <Feature icon={ShieldCheck} title="Sources vérifiées" desc="Données officielles agrégées avec un score de fiabilité, complétées par les signalements citoyens." />
+          <div className="rounded-2xl border-2 border-accent/40 bg-gradient-to-br from-accent/10 to-primary/5 p-6 shadow-soft flex flex-col">
+            <span className="grid h-10 w-10 place-items-center rounded-lg bg-accent text-accent-foreground"><Megaphone className="h-5 w-5" /></span>
+            <h3 className="mt-4 font-display text-lg font-semibold">Signaler en 10 secondes</h3>
+            <p className="mt-1 text-sm text-muted-foreground flex-1">Eau coupée, retour de l'eau, travaux : aidez vos voisins. Chaque signalement améliore la fiabilité.</p>
+            <Button asChild size="sm" className="mt-4 self-start bg-accent text-accent-foreground hover:bg-accent/90">
+              <Link to="/carte">Signaler maintenant</Link>
+            </Button>
+          </div>
         </div>
       </section>
 
