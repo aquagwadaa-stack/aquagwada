@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { toast } from "sonner";
-import { Bell, Mail, MessageSquare, Phone, Shield, Lock, Clock, History } from "lucide-react";
+import { Bell, Mail, MessageSquare, Phone, Lock, Clock, History, Droplet, DropletOff } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,9 @@ type Prefs = {
   notify_outage_start: boolean;
   notify_water_back: boolean;
   notify_preventive: boolean;
+  notify_preventive_water_back: boolean;
   preventive_hours_before: number;
+  preventive_water_back_hours_before: number;
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
 };
@@ -29,7 +31,9 @@ const DEFAULT_PREFS: Prefs = {
   notify_outage_start: true,
   notify_water_back: true,
   notify_preventive: true,
+  notify_preventive_water_back: false,
   preventive_hours_before: 24,
+  preventive_water_back_hours_before: 1,
   quiet_hours_start: null,
   quiet_hours_end: null,
 };
