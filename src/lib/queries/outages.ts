@@ -16,6 +16,19 @@ export type Outage = {
   commune?: { name: string; slug: string } | null;
 };
 
+function normalizeOutageStatus(outage: Outage): Outage {
+  const now = Date.now();
+  const start = new Date(outage.starts_at).getTime();
+  const end = outage.ends_at ? new Date(outage.ends_at).getTime() : null;
+
+  if (outage.status === "cancelled" || outage.status === "resolved") return outage;
+  if (end !== null && end < now) return { ...outage, status: "resolved" };
+  if (start <= now && (end === null || end >= now) && outage.status === "scheduled") {
+    return { ...outage, status: "ongoing" };
+  }
+  return outage;
+}
+
 export async function fetchOutagesWindow(fromIso: string, toIso: string, communeIds?: string[]): Promise<Outage[]> {
   let q = supabase
     .from("outages")
@@ -26,7 +39,7 @@ export async function fetchOutagesWindow(fromIso: string, toIso: string, commune
   if (communeIds && communeIds.length) q = q.in("commune_id", communeIds);
   const { data, error } = await q;
   if (error) throw error;
-  return (data ?? []) as unknown as Outage[];
+  return ((data ?? []) as unknown as Outage[]).map(normalizeOutageStatus);
 }
 
 export async function fetchOngoingOutages(): Promise<Outage[]> {
@@ -40,7 +53,7 @@ export async function fetchOngoingOutages(): Promise<Outage[]> {
     .neq("status", "cancelled")
     .order("starts_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as unknown as Outage[];
+  return ((data ?? []) as unknown as Outage[]).map(normalizeOutageStatus);
 }
 
 export async function fetchOutagesByCommune(communeId: string, days = 30): Promise<Outage[]> {
@@ -52,5 +65,5 @@ export async function fetchOutagesByCommune(communeId: string, days = 30): Promi
     .gte("starts_at", fromIso)
     .order("starts_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []) as unknown as Outage[];
+  return ((data ?? []) as unknown as Outage[]).map(normalizeOutageStatus);
 }
