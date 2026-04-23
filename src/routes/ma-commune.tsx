@@ -3,14 +3,16 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/providers/AuthProvider";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchCommunes } from "@/lib/queries/communes";
-import { fetchOngoingOutages, fetchOutagesByCommune, fetchOutagesWindow } from "@/lib/queries/outages";
+import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
+import { fetchForecastsRange } from "@/lib/queries/forecasts";
 import { CurrentStatusCard } from "@/components/outages/CurrentStatusCard";
-import { DayTimeline } from "@/components/outages/Timeline";
+import { DayTimeline, DayPicker } from "@/components/outages/Timeline";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
-import { useEffect, useMemo, useState } from "react";
-import { Heart, Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Heart, Plus, Trash2, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { canSeeForecasts, PLAN_CAPS, type Tier } from "@/lib/subscription";
 
 export const Route = createFileRoute("/ma-commune")({
   component: MaCommunePage,
@@ -45,6 +47,25 @@ function Authed() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const communes = useQuery({ queryKey: ["communes"], queryFn: fetchCommunes });
+
+  const subscription = useQuery({
+    queryKey: ["subscription", user!.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("subscriptions")
+        .select("tier, status")
+        .eq("user_id", user!.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const tier: Tier = (subscription.data?.tier as Tier) ?? "free";
+  const showForecasts = canSeeForecasts(tier);
+  const forecastDays = PLAN_CAPS[tier].forecastDays;
+
   const favs = useQuery({
     queryKey: ["favs", user!.id],
     queryFn: async () => {
@@ -65,13 +86,30 @@ function Authed() {
     enabled: favIds.length > 0,
   });
 
-  const today = new Date();
-  const start = new Date(today); start.setHours(0,0,0,0);
-  const end = new Date(today); end.setHours(23,59,59,999);
+  const [selectedDay, setSelectedDay] = useState<Date>(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
+  });
+  const dayStart = useMemo(() => {
+    const d = new Date(selectedDay); d.setHours(0, 0, 0, 0); return d;
+  }, [selectedDay]);
+  const dayEnd = useMemo(() => {
+    const d = new Date(selectedDay); d.setHours(23, 59, 59, 999); return d;
+  }, [selectedDay]);
+
   const dayOutages = useQuery({
-    queryKey: ["outages-today-favs", favIds, start.toISOString()],
-    queryFn: () => fetchOutagesWindow(start.toISOString(), end.toISOString(), favIds),
+    queryKey: ["outages-day-favs", favIds, dayStart.toISOString()],
+    queryFn: () => fetchOutagesWindow(dayStart.toISOString(), dayEnd.toISOString(), favIds),
     enabled: favIds.length > 0,
+  });
+
+  const dayForecasts = useQuery({
+    queryKey: ["forecasts-day-favs", favIds, dayStart.toISOString().slice(0, 10), showForecasts],
+    queryFn: () => fetchForecastsRange(
+      dayStart.toISOString().slice(0, 10),
+      dayStart.toISOString().slice(0, 10),
+      favIds,
+    ),
+    enabled: favIds.length > 0 && showForecasts,
   });
 
   const [pickerCommune, setPickerCommune] = useState("");
@@ -93,6 +131,7 @@ function Authed() {
   }
 
   const available = (communes.data ?? []).filter((c) => !favIds.includes(c.id));
+  const isFutureDay = dayStart.getTime() > Date.now();
 
   return (
     <AppShell>
@@ -106,7 +145,9 @@ function Authed() {
         <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
           <div className="flex flex-wrap items-end gap-3">
             <div className="flex-1 min-w-[220px]">
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Ajouter une commune</label>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                Ajouter une commune {tier !== "free" && `(${favIds.length}/${PLAN_CAPS[tier].maxCommunes})`}
+              </label>
               <select value={pickerCommune} onChange={(e) => setPickerCommune(e.target.value)} className="mt-1 block w-full rounded-md border border-input bg-background px-3 py-2 text-sm">
                 <option value="">Choisir…</option>
                 {available.map((c) => (
@@ -116,6 +157,11 @@ function Authed() {
             </div>
             <Button onClick={addFav} className="bg-gradient-ocean text-primary-foreground"><Plus className="h-4 w-4 mr-1" />Ajouter</Button>
           </div>
+          {tier === "free" && favIds.length >= 1 && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              Plan gratuit : 1 commune. <Link to="/abonnements" className="text-primary underline">Passer Pro</Link> pour suivre jusqu'à {PLAN_CAPS.pro.maxCommunes} communes.
+            </p>
+          )}
         </div>
 
         {/* Status cards */}
@@ -140,7 +186,42 @@ function Authed() {
         </div>
 
         {favIds.length > 0 && (
-          <DayTimeline date={today} outages={dayOutages.data ?? []} />
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="font-display text-xl font-semibold">Timeline</h2>
+              {isFutureDay && !showForecasts && (
+                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                  <Lock className="h-3 w-3" /> Prévisions réservées au plan Pro
+                </span>
+              )}
+            </div>
+            <DayPicker
+              selected={selectedDay}
+              onChange={setSelectedDay}
+              forwardDays={showForecasts ? forecastDays : 0}
+              backDays={0}
+            />
+            <DayTimeline
+              date={selectedDay}
+              outages={dayOutages.data ?? []}
+              forecasts={dayForecasts.data ?? []}
+              showForecasts={showForecasts}
+            />
+            {isFutureDay && !showForecasts && (
+              <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">
+                <div className="flex items-start gap-3">
+                  <Lock className="h-4 w-4 text-warning shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-medium">Prévisions à 14 jours</p>
+                    <p className="text-muted-foreground text-xs mt-1">
+                      Anticipez vos coupures grâce au moteur statistique.{" "}
+                      <Link to="/abonnements" className="text-primary underline">Découvrir Pro</Link>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         )}
       </div>
     </AppShell>

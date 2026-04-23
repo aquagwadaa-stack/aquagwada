@@ -18,6 +18,10 @@ import { Route as AbonnementsRouteImport } from './routes/abonnements'
 import { Route as AProposRouteImport } from './routes/a-propos'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
+import { Route as ApiPublicJobsScrapeSmgeagRouteImport } from './routes/api.public.jobs.scrape-smgeag'
+import { Route as ApiPublicJobsGenerateForecastsRouteImport } from './routes/api.public.jobs.generate-forecasts'
+import { Route as ApiPublicJobsCleanupHistoryRouteImport } from './routes/api.public.jobs.cleanup-history'
+import { Route as ApiPublicJobsCheckPreventiveRouteImport } from './routes/api.public.jobs.check-preventive'
 
 const MaCommuneRoute = MaCommuneRouteImport.update({
   id: '/ma-commune',
@@ -64,6 +68,30 @@ const ApiPublicOutagesIngestRoute = ApiPublicOutagesIngestRouteImport.update({
   path: '/api/public/outages/ingest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicJobsScrapeSmgeagRoute =
+  ApiPublicJobsScrapeSmgeagRouteImport.update({
+    id: '/api/public/jobs/scrape-smgeag',
+    path: '/api/public/jobs/scrape-smgeag',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicJobsGenerateForecastsRoute =
+  ApiPublicJobsGenerateForecastsRouteImport.update({
+    id: '/api/public/jobs/generate-forecasts',
+    path: '/api/public/jobs/generate-forecasts',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicJobsCleanupHistoryRoute =
+  ApiPublicJobsCleanupHistoryRouteImport.update({
+    id: '/api/public/jobs/cleanup-history',
+    path: '/api/public/jobs/cleanup-history',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicJobsCheckPreventiveRoute =
+  ApiPublicJobsCheckPreventiveRouteImport.update({
+    id: '/api/public/jobs/check-preventive',
+    path: '/api/public/jobs/check-preventive',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -74,6 +102,10 @@ export interface FileRoutesByFullPath {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
+  '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
+  '/api/public/jobs/generate-forecasts': typeof ApiPublicJobsGenerateForecastsRoute
+  '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
 export interface FileRoutesByTo {
@@ -85,6 +117,10 @@ export interface FileRoutesByTo {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
+  '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
+  '/api/public/jobs/generate-forecasts': typeof ApiPublicJobsGenerateForecastsRoute
+  '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
 export interface FileRoutesById {
@@ -97,6 +133,10 @@ export interface FileRoutesById {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
+  '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
+  '/api/public/jobs/generate-forecasts': typeof ApiPublicJobsGenerateForecastsRoute
+  '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
 export interface FileRouteTypes {
@@ -110,6 +150,10 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/api/public/jobs/check-preventive'
+    | '/api/public/jobs/cleanup-history'
+    | '/api/public/jobs/generate-forecasts'
+    | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -121,6 +165,10 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/api/public/jobs/check-preventive'
+    | '/api/public/jobs/cleanup-history'
+    | '/api/public/jobs/generate-forecasts'
+    | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
   id:
     | '__root__'
@@ -132,6 +180,10 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/api/public/jobs/check-preventive'
+    | '/api/public/jobs/cleanup-history'
+    | '/api/public/jobs/generate-forecasts'
+    | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
   fileRoutesById: FileRoutesById
 }
@@ -144,6 +196,10 @@ export interface RootRouteChildren {
   ConfidentialiteRoute: typeof ConfidentialiteRoute
   ConnexionRoute: typeof ConnexionRoute
   MaCommuneRoute: typeof MaCommuneRoute
+  ApiPublicJobsCheckPreventiveRoute: typeof ApiPublicJobsCheckPreventiveRoute
+  ApiPublicJobsCleanupHistoryRoute: typeof ApiPublicJobsCleanupHistoryRoute
+  ApiPublicJobsGenerateForecastsRoute: typeof ApiPublicJobsGenerateForecastsRoute
+  ApiPublicJobsScrapeSmgeagRoute: typeof ApiPublicJobsScrapeSmgeagRoute
   ApiPublicOutagesIngestRoute: typeof ApiPublicOutagesIngestRoute
 }
 
@@ -212,6 +268,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicOutagesIngestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/scrape-smgeag': {
+      id: '/api/public/jobs/scrape-smgeag'
+      path: '/api/public/jobs/scrape-smgeag'
+      fullPath: '/api/public/jobs/scrape-smgeag'
+      preLoaderRoute: typeof ApiPublicJobsScrapeSmgeagRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/generate-forecasts': {
+      id: '/api/public/jobs/generate-forecasts'
+      path: '/api/public/jobs/generate-forecasts'
+      fullPath: '/api/public/jobs/generate-forecasts'
+      preLoaderRoute: typeof ApiPublicJobsGenerateForecastsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/cleanup-history': {
+      id: '/api/public/jobs/cleanup-history'
+      path: '/api/public/jobs/cleanup-history'
+      fullPath: '/api/public/jobs/cleanup-history'
+      preLoaderRoute: typeof ApiPublicJobsCleanupHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/check-preventive': {
+      id: '/api/public/jobs/check-preventive'
+      path: '/api/public/jobs/check-preventive'
+      fullPath: '/api/public/jobs/check-preventive'
+      preLoaderRoute: typeof ApiPublicJobsCheckPreventiveRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -224,6 +308,10 @@ const rootRouteChildren: RootRouteChildren = {
   ConfidentialiteRoute: ConfidentialiteRoute,
   ConnexionRoute: ConnexionRoute,
   MaCommuneRoute: MaCommuneRoute,
+  ApiPublicJobsCheckPreventiveRoute: ApiPublicJobsCheckPreventiveRoute,
+  ApiPublicJobsCleanupHistoryRoute: ApiPublicJobsCleanupHistoryRoute,
+  ApiPublicJobsGenerateForecastsRoute: ApiPublicJobsGenerateForecastsRoute,
+  ApiPublicJobsScrapeSmgeagRoute: ApiPublicJobsScrapeSmgeagRoute,
   ApiPublicOutagesIngestRoute: ApiPublicOutagesIngestRoute,
 }
 export const routeTree = rootRouteImport
