@@ -208,7 +208,12 @@ export const Route = createFileRoute("/api/public/outages/ingest")({
               merged++;
             } else {
               // Rang inférieur : N'OVERRIDE PAS. Enrichit uniquement les champs vides.
-              const patch: Record<string, unknown> = {};
+              const patch: {
+                ends_at?: string;
+                sector?: string;
+                cause?: string;
+                description?: string;
+              } = {};
               if (!mergeable.ends_at && i.ends_at) patch.ends_at = i.ends_at;
               if (!mergeable.sector && i.sector) patch.sector = i.sector;
               if (!mergeable.cause && i.cause) patch.cause = i.cause;
