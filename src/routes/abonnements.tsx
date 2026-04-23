@@ -1,9 +1,13 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { supabase } from "@/integrations/supabase/client";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Lock, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/providers/AuthProvider";
+import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
+import { toast } from "sonner";
+import { useState } from "react";
 
 type PlanRow = {
   id: string;
@@ -42,6 +46,17 @@ const FEATURE_MATRIX: Array<{ key: string; label: string; pick: (p: PlanRow) => 
 ];
 
 function PricingPage() {
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const [busy, setBusy] = useState(false);
+
+  const sub = useQuery({
+    queryKey: ["subscription", user?.id ?? "anon"],
+    queryFn: () => fetchEffectiveSubscription(user!.id),
+    enabled: !!user,
+  });
+
   const plans = useQuery({
     queryKey: ["plans"],
     queryFn: async () => {
@@ -54,6 +69,28 @@ function PricingPage() {
       return (data ?? []) as unknown as PlanRow[];
     },
   });
+
+  async function handleStartTrial() {
+    if (!user) {
+      navigate({ to: "/connexion" });
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await startProTrial(user.id, 7);
+      if (!r.ok) {
+        toast.error(r.reason ?? "Impossible de démarrer l'essai");
+      } else {
+        toast.success("Essai Pro démarré ! 7 jours pour tout tester.");
+        qc.invalidateQueries({ queryKey: ["subscription", user.id] });
+        navigate({ to: "/ma-commune" });
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const trialActive = !!sub.data?.trialActive;
 
   return (
     <AppShell>
