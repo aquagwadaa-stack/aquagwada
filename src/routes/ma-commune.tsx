@@ -89,6 +89,13 @@ function Authed() {
   });
 
   const favIds = useMemo(() => (favs.data ?? []).map((f) => f.commune_id), [favs.data]);
+  const favCommunes = useMemo(
+    () =>
+      (favs.data ?? [])
+        .map((f: any) => f.communes)
+        .filter((c: any): c is { id: string; name: string } => !!c && !!c.id && !!c.name),
+    [favs.data]
+  );
   const reachedLimit = favIds.length >= caps.maxCommunes;
 
   const ongoing = useQuery({
@@ -285,6 +292,7 @@ function Authed() {
               lockedCtaText="Essai gratuit Pro 7j · sans CB"
               lockedCtaTo="/abonnements"
               teaserHours={1}
+              communes={favCommunes}
             />
             {isFutureDay && !showForecasts && (
               <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">

@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
 import { toast } from "sonner";
-import { Bell, Mail, MessageSquare, Phone, Shield, Lock, Clock } from "lucide-react";
+import { Bell, Mail, MessageSquare, Phone, Shield, Lock, Clock, History } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -113,6 +113,22 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   }
 
   const needsPhoneForActiveChannel = (prefs.sms_enabled || prefs.whatsapp_enabled) && !profile.data?.phone;
+
+  // Logs des dernières notifications (RLS : own only)
+  const logs = useQuery({
+    queryKey: ["notification_logs", user!.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("notification_logs")
+        .select("id, channel, kind, sent_at, dry_run")
+        .eq("user_id", user!.id)
+        .order("sent_at", { ascending: false })
+        .limit(8);
+      if (error) throw error;
+      return data ?? [];
+    },
+    staleTime: 30_000,
+  });
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5 shadow-soft space-y-5">
@@ -263,6 +279,44 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
           </p>
         </div>
       )}
+
+      {/* Logs des dernières notifications */}
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+          <History className="h-3 w-3" /> Dernières notifications
+        </p>
+        {logs.isLoading ? (
+          <p className="text-xs text-muted-foreground">Chargement…</p>
+        ) : (logs.data ?? []).length === 0 ? (
+          <p className="text-xs text-muted-foreground rounded-lg border border-dashed border-border px-3 py-3">
+            Aucune notification déclenchée pour l'instant. Vos préférences seront appliquées dès la prochaine coupure pertinente.
+          </p>
+        ) : (
+          <ul className="space-y-1.5">
+            {(logs.data ?? []).map((l: any) => (
+              <li
+                key={l.id}
+                className="flex items-center justify-between gap-2 rounded-md border border-border bg-card/50 px-2.5 py-1.5 text-xs"
+              >
+                <span className="flex items-center gap-2 min-w-0">
+                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider">
+                    {l.channel}
+                  </span>
+                  <span className="truncate text-foreground/80">{l.kind}</span>
+                  {l.dry_run && (
+                    <span className="rounded bg-warning/15 border border-warning/40 px-1 py-0.5 text-[9px] font-medium text-warning-foreground">
+                      test
+                    </span>
+                  )}
+                </span>
+                <span className="text-muted-foreground shrink-0">
+                  {new Date(l.sent_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </section>
   );
 }

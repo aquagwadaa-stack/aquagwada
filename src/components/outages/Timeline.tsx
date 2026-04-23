@@ -3,7 +3,7 @@ import type { Forecast } from "@/lib/queries/forecasts";
 import { StatusBadge } from "./StatusBadge";
 import { SourceBadge } from "./SourceBadge";
 import { formatHM, formatDuration, durationBetween } from "@/lib/format";
-import { Clock, Sparkles, TrendingDown, TrendingUp, Minus, Lock } from "lucide-react";
+import { Clock, Sparkles, TrendingDown, TrendingUp, Minus, Lock, MapPin, Plus } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
 function TrendBadge({ trend }: { trend: Forecast["trend"] }) {
@@ -39,6 +39,9 @@ export function DayTimeline({
   lockedCtaTo = "/abonnements",
   teaserPercentOfRest = 0.2,
   teaserHours = 1,
+  communes,
+  emptyCtaTo = "/ma-commune",
+  emptyCtaLabel = "Ajouter votre commune",
 }: {
   date: Date;
   outages: Outage[];
@@ -56,6 +59,14 @@ export function DayTimeline({
   teaserPercentOfRest?: number;
   /** Nombre d'heures de visibilité après "maintenant" avant le verrouillage (par défaut 1h). */
   teaserHours?: number;
+  /**
+   * Mode multi-communes : si fourni, affiche une ligne horizontale par commune,
+   * dans l'ordre, même si aucune coupure / prévision pour la journée.
+   * Si vide ([]), affiche un bloc CTA "ajouter une commune".
+   */
+  communes?: Array<{ id: string; name: string }>;
+  emptyCtaTo?: string;
+  emptyCtaLabel?: string;
 }) {
   const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
@@ -82,6 +93,10 @@ export function DayTimeline({
     }
   }
 
+  // Mode multi-communes : on rend une ligne par commune (même vide).
+  const multiMode = Array.isArray(communes);
+  const hourTicks = Array.from({ length: 23 }, (_, i) => i + 1); // 1..23
+
   return (
     <div className="rounded-2xl border border-border bg-card p-4 sm:p-6 shadow-soft">
       <div className="flex items-center justify-between mb-4">
@@ -94,9 +109,22 @@ export function DayTimeline({
         </span>
       </div>
 
+      {multiMode && communes!.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-8 text-center">
+          <MapPin className="h-6 w-6 mx-auto text-primary mb-2" />
+          <p className="text-sm font-medium">Ajoutez votre commune favorite pour voir vos timelines</p>
+          <p className="text-xs text-muted-foreground mt-1 mb-4">Une ligne par commune, vue d'ensemble en un coup d'œil.</p>
+          <Link
+            to={emptyCtaTo}
+            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            <Plus className="h-3.5 w-3.5" /> {emptyCtaLabel}
+          </Link>
+        </div>
+      ) : (
       <div className="relative">
         {/* échelle horaire */}
-        <div className="relative h-6 border-b border-border/60">
+        <div className="relative h-6 border-b border-border/60" style={multiMode ? { marginLeft: 96 } : undefined}>
           {hours.filter((h) => h % 3 === 0).map((h) => (
             <span key={h} className="absolute -translate-x-1/2 text-[10px] text-muted-foreground" style={{ left: `${(h / 24) * 100}%` }}>
               {String(h).padStart(2, "0")}h
@@ -104,7 +132,17 @@ export function DayTimeline({
           ))}
         </div>
         {/* lignes verticales */}
-        <div className="relative mt-2 space-y-2">
+        <div className="relative mt-2 space-y-2" style={multiMode ? { marginLeft: 96 } : undefined}>
+          {/* pointillés horaires (toutes les heures) très discrets */}
+          <div className="pointer-events-none absolute inset-y-0 inset-x-0 z-0">
+            {hourTicks.map((h) => (
+              <span
+                key={`tick-${h}`}
+                className="absolute top-0 bottom-0 border-l border-dashed border-border/30"
+                style={{ left: `${(h / 24) * 100}%` }}
+              />
+            ))}
+          </div>
           {nowOffset !== null && (
             <div className="pointer-events-none absolute inset-y-0 z-10" style={{ left: `${nowOffset}%` }}>
               <div className="h-full w-px bg-primary" />
@@ -112,13 +150,14 @@ export function DayTimeline({
             </div>
           )}
 
-          {outages.length === 0 && dailyForecasts.length === 0 && (
+          {!multiMode && outages.length === 0 && dailyForecasts.length === 0 && (
             <div className="rounded-lg border border-dashed border-border py-10 text-center text-sm text-muted-foreground">
               {isFuture ? "Aucune prévision de coupure pour cette date." : "Aucune coupure programmée ou détectée."}
             </div>
           )}
 
-          {outages.map((o) => {
+          {/* Mode classique : on rend toutes les coupures empilées */}
+          {!multiMode && outages.map((o) => {
             const s = new Date(o.starts_at).getTime();
             const e = o.ends_at
               ? new Date(o.ends_at).getTime()
@@ -146,8 +185,8 @@ export function DayTimeline({
             );
           })}
 
-          {/* Forecasts (jaune, dashed) */}
-          {dailyForecasts.map((f) => {
+          {/* Forecasts (jaune, dashed) — mode classique */}
+          {!multiMode && dailyForecasts.map((f) => {
             const [sh, sm] = (f.window_start ?? "08:00:00").split(":").map(Number);
             const [eh, em] = (f.window_end ?? "10:00:00").split(":").map(Number);
             const startMs = startOfDay.getTime() + (sh * 60 + sm) * 60_000;
@@ -171,6 +210,68 @@ export function DayTimeline({
                     Prévision (confiance {Math.round(f.confidence * 100)}%)
                   </div>
                 </div>
+              </div>
+            );
+          })}
+
+          {/* Mode multi-communes : une ligne par commune favorite */}
+          {multiMode && communes!.map((c) => {
+            const cOutages = outages.filter((o) => o.commune_id === c.id);
+            const cForecasts = dailyForecasts.filter((f) => f.commune_id === c.id);
+            return (
+              <div key={c.id} className="relative h-10 group">
+                {/* Étiquette commune (en dehors du conteneur scaled grâce au marginLeft parent) */}
+                <div className="absolute right-full top-0 bottom-0 w-24 -ml-0 flex items-center pr-2 text-[11px] font-medium truncate text-foreground/80" style={{ marginRight: 0 }}>
+                  <span className="truncate">{c.name}</span>
+                </div>
+                {/* Fond de ligne discret */}
+                <div className="absolute inset-0 rounded-md bg-muted/20" />
+                {cOutages.map((o) => {
+                  const s = new Date(o.starts_at).getTime();
+                  const e = o.ends_at
+                    ? new Date(o.ends_at).getTime()
+                    : Math.min(endOfDay.getTime(), s + (o.estimated_duration_minutes ?? 120) * 60_000);
+                  const left = Math.max(0, ((s - startOfDay.getTime()) / dayMs) * 100);
+                  const widthPct = Math.max(1.5, ((e - Math.max(s, startOfDay.getTime())) / dayMs) * 100);
+                  const tone =
+                    o.status === "ongoing" ? "bg-destructive/25 border-destructive/50"
+                      : o.status === "resolved" ? "bg-success/20 border-success/50"
+                      : o.status === "cancelled" ? "bg-muted border-border"
+                      : "bg-warning/25 border-warning/50";
+                  return (
+                    <div
+                      key={o.id}
+                      className={`absolute top-1 bottom-1 rounded border ${tone} px-1 overflow-hidden flex items-center`}
+                      style={{ left: `${left}%`, width: `${Math.min(100 - left, widthPct)}%` }}
+                      title={`${formatHM(o.starts_at)}${o.ends_at ? `–${formatHM(o.ends_at)}` : ""} · ${o.sector || o.cause || "Coupure"}`}
+                    >
+                      <span className="text-[10px] font-medium truncate">
+                        {formatHM(o.starts_at)}{o.ends_at ? `–${formatHM(o.ends_at)}` : ""}
+                      </span>
+                    </div>
+                  );
+                })}
+                {cForecasts.map((f) => {
+                  const [sh, sm] = (f.window_start ?? "08:00:00").split(":").map(Number);
+                  const [eh, em] = (f.window_end ?? "10:00:00").split(":").map(Number);
+                  const startMs = startOfDay.getTime() + (sh * 60 + sm) * 60_000;
+                  const endMs = startOfDay.getTime() + (eh * 60 + em) * 60_000;
+                  const left = Math.max(0, ((startMs - startOfDay.getTime()) / dayMs) * 100);
+                  const widthPct = Math.max(1.5, ((endMs - startMs) / dayMs) * 100);
+                  const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
+                  return (
+                    <div
+                      key={f.id}
+                      className={`absolute top-1 bottom-1 rounded border border-dashed ${intensity} px-1 overflow-hidden flex items-center`}
+                      style={{ left: `${left}%`, width: `${Math.min(100 - left, widthPct)}%` }}
+                      title={`Prévision ${Math.round(f.probability * 100)}% · ${f.basis ?? ""}`}
+                    >
+                      <span className="text-[10px] font-medium truncate">
+                        {f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -199,8 +300,9 @@ export function DayTimeline({
           )}
         </div>
       </div>
+      )}
 
-      {outages.length > 0 && (
+      {!multiMode && outages.length > 0 && (
         <ul className="mt-4 divide-y divide-border/60">
           {outages.map((o) => (
             <li key={o.id} className="py-3 flex flex-wrap items-center gap-3 text-sm">
@@ -218,7 +320,7 @@ export function DayTimeline({
         </ul>
       )}
 
-      {dailyForecasts.length > 0 && (
+      {!multiMode && dailyForecasts.length > 0 && (
         <ul className="mt-4 divide-y divide-border/60">
           {dailyForecasts.map((f) => (
             <li key={f.id} className="py-3 flex flex-wrap items-center gap-3 text-sm">
