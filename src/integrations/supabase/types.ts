@@ -54,30 +54,39 @@ export type Database = {
         Row: {
           basis: string | null
           commune_id: string
+          confidence: number
           created_at: string
+          expected_duration_minutes: number | null
           forecast_date: string
           id: string
           probability: number
+          sample_size: number
           window_end: string | null
           window_start: string | null
         }
         Insert: {
           basis?: string | null
           commune_id: string
+          confidence?: number
           created_at?: string
+          expected_duration_minutes?: number | null
           forecast_date: string
           id?: string
           probability: number
+          sample_size?: number
           window_end?: string | null
           window_start?: string | null
         }
         Update: {
           basis?: string | null
           commune_id?: string
+          confidence?: number
           created_at?: string
+          expected_duration_minutes?: number | null
           forecast_date?: string
           id?: string
           probability?: number
+          sample_size?: number
           window_end?: string | null
           window_start?: string | null
         }
@@ -133,56 +142,125 @@ export type Database = {
         }
         Relationships: []
       }
+      outage_history: {
+        Row: {
+          archived_at: string
+          cause: string | null
+          commune_id: string
+          confidence_score: number
+          description: string | null
+          duration_minutes: number
+          ends_at: string
+          external_id: string | null
+          id: string
+          original_outage_id: string | null
+          reliability_score: number
+          sector: string | null
+          source: Database["public"]["Enums"]["outage_source"]
+          source_url: string | null
+          starts_at: string
+          time_precision: Database["public"]["Enums"]["time_precision"]
+        }
+        Insert: {
+          archived_at?: string
+          cause?: string | null
+          commune_id: string
+          confidence_score?: number
+          description?: string | null
+          duration_minutes: number
+          ends_at: string
+          external_id?: string | null
+          id?: string
+          original_outage_id?: string | null
+          reliability_score?: number
+          sector?: string | null
+          source: Database["public"]["Enums"]["outage_source"]
+          source_url?: string | null
+          starts_at: string
+          time_precision?: Database["public"]["Enums"]["time_precision"]
+        }
+        Update: {
+          archived_at?: string
+          cause?: string | null
+          commune_id?: string
+          confidence_score?: number
+          description?: string | null
+          duration_minutes?: number
+          ends_at?: string
+          external_id?: string | null
+          id?: string
+          original_outage_id?: string | null
+          reliability_score?: number
+          sector?: string | null
+          source?: Database["public"]["Enums"]["outage_source"]
+          source_url?: string | null
+          starts_at?: string
+          time_precision?: Database["public"]["Enums"]["time_precision"]
+        }
+        Relationships: []
+      }
       outages: {
         Row: {
           cause: string | null
           commune_id: string
+          confidence_score: number
+          confidence_source_weight: number
           created_at: string
           description: string | null
           ends_at: string | null
           estimated_duration_minutes: number | null
           external_id: string | null
           id: string
+          is_estimated: boolean
           reliability_score: number
           sector: string | null
           source: Database["public"]["Enums"]["outage_source"]
           source_url: string | null
           starts_at: string
           status: Database["public"]["Enums"]["outage_status"]
+          time_precision: Database["public"]["Enums"]["time_precision"]
           updated_at: string
         }
         Insert: {
           cause?: string | null
           commune_id: string
+          confidence_score?: number
+          confidence_source_weight?: number
           created_at?: string
           description?: string | null
           ends_at?: string | null
           estimated_duration_minutes?: number | null
           external_id?: string | null
           id?: string
+          is_estimated?: boolean
           reliability_score?: number
           sector?: string | null
           source?: Database["public"]["Enums"]["outage_source"]
           source_url?: string | null
           starts_at: string
           status?: Database["public"]["Enums"]["outage_status"]
+          time_precision?: Database["public"]["Enums"]["time_precision"]
           updated_at?: string
         }
         Update: {
           cause?: string | null
           commune_id?: string
+          confidence_score?: number
+          confidence_source_weight?: number
           created_at?: string
           description?: string | null
           ends_at?: string | null
           estimated_duration_minutes?: number | null
           external_id?: string | null
           id?: string
+          is_estimated?: boolean
           reliability_score?: number
           sector?: string | null
           source?: Database["public"]["Enums"]["outage_source"]
           source_url?: string | null
           starts_at?: string
           status?: Database["public"]["Enums"]["outage_status"]
+          time_precision?: Database["public"]["Enums"]["time_precision"]
           updated_at?: string
         }
         Relationships: [
@@ -417,6 +495,16 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_commune_status: {
+        Args: { _commune_id: string }
+        Returns: {
+          confidence: number
+          next_cut: string
+          ongoing_count: number
+          status: string
+          water_back_at: string
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -437,6 +525,7 @@ export type Database = {
         | "canceled"
         | "expired"
       subscription_tier: "free" | "pro" | "business"
+      time_precision: "exact" | "approximate" | "day_only"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -576,6 +665,7 @@ export const Constants = {
         "expired",
       ],
       subscription_tier: ["free", "pro", "business"],
+      time_precision: ["exact", "approximate", "day_only"],
     },
   },
 } as const
