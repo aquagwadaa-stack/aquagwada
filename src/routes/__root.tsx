@@ -1,6 +1,7 @@
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
+import { AppProviders } from "@/providers/AppProviders";
 
 function NotFoundComponent() {
   return (
@@ -29,20 +30,24 @@ export const Route = createRootRoute({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Lovable App" },
-      { name: "description", content: "Lovable Generated Project" },
-      { name: "author", content: "Lovable" },
-      { property: "og:title", content: "Lovable App" },
-      { property: "og:description", content: "Lovable Generated Project" },
+      { title: "AquaGwada — Suivi des coupures d'eau en Guadeloupe" },
+      { name: "description", content: "Suivez en temps réel les coupures d'eau en Guadeloupe : carte, timeline, prévisions et alertes par commune." },
+      { name: "author", content: "AquaGwada" },
+      { property: "og:title", content: "AquaGwada — Coupures d'eau en Guadeloupe" },
+      { property: "og:description", content: "Carte, timeline, prévisions et alertes des coupures d'eau en Guadeloupe." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
-      { name: "twitter:site", content: "@Lovable" },
+      { name: "twitter:site", content: "@AquaGwada" },
     ],
     links: [
       {
         rel: "stylesheet",
         href: appCss,
       },
+      { rel: "preconnect", href: "https://fonts.googleapis.com" },
+      { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
+      { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" },
+      { rel: "stylesheet", href: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" },
     ],
   }),
   shellComponent: RootShell,
@@ -65,5 +70,9 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
-  return <Outlet />;
+  return (
+    <AppProviders>
+      <Outlet />
+    </AppProviders>
+  );
 }

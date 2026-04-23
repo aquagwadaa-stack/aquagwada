@@ -9,38 +9,195 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as MaCommuneRouteImport } from './routes/ma-commune'
+import { Route as ConnexionRouteImport } from './routes/connexion'
+import { Route as ConfidentialiteRouteImport } from './routes/confidentialite'
+import { Route as CguRouteImport } from './routes/cgu'
+import { Route as CarteRouteImport } from './routes/carte'
+import { Route as AbonnementsRouteImport } from './routes/abonnements'
+import { Route as AProposRouteImport } from './routes/a-propos'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
 
+const MaCommuneRoute = MaCommuneRouteImport.update({
+  id: '/ma-commune',
+  path: '/ma-commune',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConnexionRoute = ConnexionRouteImport.update({
+  id: '/connexion',
+  path: '/connexion',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ConfidentialiteRoute = ConfidentialiteRouteImport.update({
+  id: '/confidentialite',
+  path: '/confidentialite',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CguRoute = CguRouteImport.update({
+  id: '/cgu',
+  path: '/cgu',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CarteRoute = CarteRouteImport.update({
+  id: '/carte',
+  path: '/carte',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AbonnementsRoute = AbonnementsRouteImport.update({
+  id: '/abonnements',
+  path: '/abonnements',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AProposRoute = AProposRouteImport.update({
+  id: '/a-propos',
+  path: '/a-propos',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicOutagesIngestRoute = ApiPublicOutagesIngestRouteImport.update({
+  id: '/api/public/outages/ingest',
+  path: '/api/public/outages/ingest',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/a-propos': typeof AProposRoute
+  '/abonnements': typeof AbonnementsRoute
+  '/carte': typeof CarteRoute
+  '/cgu': typeof CguRoute
+  '/confidentialite': typeof ConfidentialiteRoute
+  '/connexion': typeof ConnexionRoute
+  '/ma-commune': typeof MaCommuneRoute
+  '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/a-propos': typeof AProposRoute
+  '/abonnements': typeof AbonnementsRoute
+  '/carte': typeof CarteRoute
+  '/cgu': typeof CguRoute
+  '/confidentialite': typeof ConfidentialiteRoute
+  '/connexion': typeof ConnexionRoute
+  '/ma-commune': typeof MaCommuneRoute
+  '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/a-propos': typeof AProposRoute
+  '/abonnements': typeof AbonnementsRoute
+  '/carte': typeof CarteRoute
+  '/cgu': typeof CguRoute
+  '/confidentialite': typeof ConfidentialiteRoute
+  '/connexion': typeof ConnexionRoute
+  '/ma-commune': typeof MaCommuneRoute
+  '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/a-propos'
+    | '/abonnements'
+    | '/carte'
+    | '/cgu'
+    | '/confidentialite'
+    | '/connexion'
+    | '/ma-commune'
+    | '/api/public/outages/ingest'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/a-propos'
+    | '/abonnements'
+    | '/carte'
+    | '/cgu'
+    | '/confidentialite'
+    | '/connexion'
+    | '/ma-commune'
+    | '/api/public/outages/ingest'
+  id:
+    | '__root__'
+    | '/'
+    | '/a-propos'
+    | '/abonnements'
+    | '/carte'
+    | '/cgu'
+    | '/confidentialite'
+    | '/connexion'
+    | '/ma-commune'
+    | '/api/public/outages/ingest'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AProposRoute: typeof AProposRoute
+  AbonnementsRoute: typeof AbonnementsRoute
+  CarteRoute: typeof CarteRoute
+  CguRoute: typeof CguRoute
+  ConfidentialiteRoute: typeof ConfidentialiteRoute
+  ConnexionRoute: typeof ConnexionRoute
+  MaCommuneRoute: typeof MaCommuneRoute
+  ApiPublicOutagesIngestRoute: typeof ApiPublicOutagesIngestRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/ma-commune': {
+      id: '/ma-commune'
+      path: '/ma-commune'
+      fullPath: '/ma-commune'
+      preLoaderRoute: typeof MaCommuneRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/connexion': {
+      id: '/connexion'
+      path: '/connexion'
+      fullPath: '/connexion'
+      preLoaderRoute: typeof ConnexionRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/confidentialite': {
+      id: '/confidentialite'
+      path: '/confidentialite'
+      fullPath: '/confidentialite'
+      preLoaderRoute: typeof ConfidentialiteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/cgu': {
+      id: '/cgu'
+      path: '/cgu'
+      fullPath: '/cgu'
+      preLoaderRoute: typeof CguRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/carte': {
+      id: '/carte'
+      path: '/carte'
+      fullPath: '/carte'
+      preLoaderRoute: typeof CarteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/abonnements': {
+      id: '/abonnements'
+      path: '/abonnements'
+      fullPath: '/abonnements'
+      preLoaderRoute: typeof AbonnementsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/a-propos': {
+      id: '/a-propos'
+      path: '/a-propos'
+      fullPath: '/a-propos'
+      preLoaderRoute: typeof AProposRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +205,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/outages/ingest': {
+      id: '/api/public/outages/ingest'
+      path: '/api/public/outages/ingest'
+      fullPath: '/api/public/outages/ingest'
+      preLoaderRoute: typeof ApiPublicOutagesIngestRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AProposRoute: AProposRoute,
+  AbonnementsRoute: AbonnementsRoute,
+  CarteRoute: CarteRoute,
+  CguRoute: CguRoute,
+  ConfidentialiteRoute: ConfidentialiteRoute,
+  ConnexionRoute: ConnexionRoute,
+  MaCommuneRoute: MaCommuneRoute,
+  ApiPublicOutagesIngestRoute: ApiPublicOutagesIngestRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
