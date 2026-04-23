@@ -7,6 +7,9 @@ import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
 import { DayTimeline } from "@/components/outages/Timeline";
 import { StatusBadge } from "@/components/outages/StatusBadge";
 import { Activity, Droplets } from "lucide-react";
+import { useAuth } from "@/providers/AuthProvider";
+import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
+import { canSeeForecasts, type Tier } from "@/lib/subscription";
 
 const OutageMap = lazy(() => import("@/components/map/OutageMap").then((m) => ({ default: m.OutageMap })));
 
@@ -33,6 +36,15 @@ function CartePage() {
     queryKey: ["outages-today", start.toISOString(), end.toISOString()],
     queryFn: () => fetchOutagesWindow(start.toISOString(), end.toISOString()),
   });
+
+  const { user } = useAuth();
+  const sub = useQuery({
+    queryKey: ["subscription", user?.id ?? "anon"],
+    queryFn: () => fetchEffectiveSubscription(user!.id),
+    enabled: !!user,
+  });
+  const tier: Tier = (sub.data?.tier as Tier) ?? "free";
+  const lockTimeline = !canSeeForecasts(tier);
 
   return (
     <AppShell>
@@ -79,7 +91,14 @@ function CartePage() {
         </div>
 
         <div className="mt-8">
-          <DayTimeline date={today} outages={today24.data ?? []} />
+          <DayTimeline
+            date={today}
+            outages={today24.data ?? []}
+            lockedAfterNow={lockTimeline}
+            lockedCtaText="Essai gratuit Pro 7j · sans CB"
+            lockedCtaTo="/abonnements"
+            teaserPercentOfRest={0.2}
+          />
         </div>
       </div>
     </AppShell>
