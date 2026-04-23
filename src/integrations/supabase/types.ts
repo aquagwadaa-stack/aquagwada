@@ -56,11 +56,13 @@ export type Database = {
           commune_id: string
           confidence: number
           created_at: string
+          day_of_week_signal: number
           expected_duration_minutes: number | null
           forecast_date: string
           id: string
           probability: number
           sample_size: number
+          trend: string
           window_end: string | null
           window_start: string | null
         }
@@ -69,11 +71,13 @@ export type Database = {
           commune_id: string
           confidence?: number
           created_at?: string
+          day_of_week_signal?: number
           expected_duration_minutes?: number | null
           forecast_date: string
           id?: string
           probability: number
           sample_size?: number
+          trend?: string
           window_end?: string | null
           window_start?: string | null
         }
@@ -82,11 +86,13 @@ export type Database = {
           commune_id?: string
           confidence?: number
           created_at?: string
+          day_of_week_signal?: number
           expected_duration_minutes?: number | null
           forecast_date?: string
           id?: string
           probability?: number
           sample_size?: number
+          trend?: string
           window_end?: string | null
           window_start?: string | null
         }
