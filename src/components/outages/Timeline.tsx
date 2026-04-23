@@ -218,6 +218,7 @@ export function DayTimeline({
           {multiMode && communes!.map((c) => {
             const cOutages = outages.filter((o) => o.commune_id === c.id);
             const cForecasts = dailyForecasts.filter((f) => f.commune_id === c.id);
+            const isEmpty = cOutages.length === 0 && cForecasts.length === 0;
             return (
               <div key={c.id} className="relative h-10 group">
                 {/* Étiquette commune (en dehors du conteneur scaled grâce au marginLeft parent) */}
@@ -226,6 +227,13 @@ export function DayTimeline({
                 </div>
                 {/* Fond de ligne discret */}
                 <div className="absolute inset-0 rounded-md bg-muted/20" />
+                {isEmpty && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <span className="text-[10px] text-muted-foreground/70 italic">
+                      {isFuture ? "Aucune prévision" : "Pas de coupure"}
+                    </span>
+                  </div>
+                )}
                 {cOutages.map((o) => {
                   const s = new Date(o.starts_at).getTime();
                   const e = o.ends_at

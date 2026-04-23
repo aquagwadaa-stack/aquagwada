@@ -193,7 +193,7 @@ function CartePage() {
             lockedCtaText="Essai gratuit Pro 7j · sans CB"
             lockedCtaTo="/abonnements"
             teaserHours={1}
-            communes={restrictToFavs ? favCommunes : undefined}
+            communes={restrictToFavs && !favs.isLoading && favCommunes.length > 0 ? favCommunes : undefined}
           />
         </div>
       </div>

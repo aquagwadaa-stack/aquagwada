@@ -292,7 +292,7 @@ function Authed() {
               lockedCtaText="Essai gratuit Pro 7j · sans CB"
               lockedCtaTo="/abonnements"
               teaserHours={1}
-              communes={favCommunes}
+              communes={favCommunes.length > 0 ? favCommunes : undefined}
             />
             {isFutureDay && !showForecasts && (
               <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">
