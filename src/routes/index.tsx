@@ -162,7 +162,7 @@ function Index() {
             lockedAfterNow={lockTimeline}
             lockedCtaText="Essai gratuit Pro 7j · sans CB"
             lockedCtaTo="/abonnements"
-            teaserPercentOfRest={0.2}
+            teaserHours={1}
           />
         )}
         {lockTimeline && (
