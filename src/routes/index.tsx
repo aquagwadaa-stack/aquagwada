@@ -170,7 +170,7 @@ function Index() {
             lockedCtaText="Essai gratuit Pro 7j · sans CB"
             lockedCtaTo="/abonnements"
             teaserHours={1}
-            communes={restrictToFavs ? favCommunes : undefined}
+            communes={restrictToFavs && !favs.isLoading ? favCommunes : undefined}
           />
         )}
         {lockTimeline && (
