@@ -100,9 +100,9 @@ function Index() {
         <div className="rounded-3xl bg-gradient-ocean p-10 md:p-14 text-primary-foreground text-center shadow-glow">
           <Droplets className="h-10 w-10 mx-auto opacity-80" />
           <h2 className="font-display text-3xl md:text-4xl font-bold mt-4">Ne soyez plus pris au dépourvu</h2>
-          <p className="mt-3 text-primary-foreground/85 max-w-xl mx-auto">Créez votre compte gratuit et recevez les alertes pour votre commune. 7 jours d'essai Pro offerts, sans carte.</p>
+          <p className="mt-3 text-primary-foreground/85 max-w-xl mx-auto">Créez votre compte gratuit et recevez les alertes pour votre commune. <strong>7 jours d'essai Pro offerts</strong>, sans carte bancaire, sans engagement.</p>
           <Button asChild size="lg" className="mt-6 bg-background text-foreground hover:bg-background/90">
-            <Link to="/abonnements">Découvrir les forfaits</Link>
+            <Link to="/abonnements">Démarrer l'essai gratuit</Link>
           </Button>
         </div>
       </section>
