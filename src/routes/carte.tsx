@@ -10,6 +10,8 @@ import { Activity, Droplets } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
 import { canSeeForecasts, type Tier } from "@/lib/subscription";
+import { ReportDialog } from "@/components/reports/ReportDialog";
+import { useState } from "react";
 
 const OutageMap = lazy(() => import("@/components/map/OutageMap").then((m) => ({ default: m.OutageMap })));
 
@@ -45,6 +47,7 @@ function CartePage() {
   });
   const tier: Tier = (sub.data?.tier as Tier) ?? "free";
   const lockTimeline = !canSeeForecasts(tier);
+  const [pickedCommune, setPickedCommune] = useState<string>("");
 
   return (
     <AppShell>
@@ -54,10 +57,31 @@ function CartePage() {
             <h1 className="font-display text-3xl font-bold">Carte des coupures</h1>
             <p className="text-sm text-muted-foreground">Vue d'ensemble de la Guadeloupe — mise à jour en continu.</p>
           </div>
-          <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm">
-            <Activity className="h-4 w-4 text-primary" />
-            <strong>{ongoing.data?.length ?? 0}</strong>
-            <span className="text-muted-foreground">coupure{(ongoing.data?.length ?? 0) > 1 ? "s" : ""} en cours</span>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1.5 text-sm">
+              <Activity className="h-4 w-4 text-primary" />
+              <strong>{ongoing.data?.length ?? 0}</strong>
+              <span className="text-muted-foreground">coupure{(ongoing.data?.length ?? 0) > 1 ? "s" : ""} en cours</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <select
+                value={pickedCommune}
+                onChange={(e) => setPickedCommune(e.target.value)}
+                className="rounded-md border border-input bg-background px-2 py-1.5 text-xs"
+              >
+                <option value="">Choisir commune…</option>
+                {(communes.data ?? []).map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+              {pickedCommune && (
+                <ReportDialog
+                  communeId={pickedCommune}
+                  communeName={(communes.data ?? []).find((c) => c.id === pickedCommune)?.name}
+                  triggerLabel="Signaler"
+                />
+              )}
+            </div>
           </div>
         </header>
 
