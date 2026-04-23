@@ -3,8 +3,17 @@ import { Droplet, DropletOff, Clock, CheckCircle2 } from "lucide-react";
 import { formatHM, formatDuration, durationBetween } from "@/lib/format";
 import { SourceBadge } from "./SourceBadge";
 import { Link } from "@tanstack/react-router";
+import { ReportDialog } from "@/components/reports/ReportDialog";
 
-export function CurrentStatusCard({ communeName, outage }: { communeName: string; outage: Outage | null }) {
+export function CurrentStatusCard({
+  communeName,
+  outage,
+  communeId,
+}: {
+  communeName: string;
+  outage: Outage | null;
+  communeId?: string;
+}) {
   if (!outage) {
     return (
       <div className="rounded-2xl border border-success/30 bg-success/5 p-6 shadow-soft">
@@ -12,10 +21,15 @@ export function CurrentStatusCard({ communeName, outage }: { communeName: string
           <span className="grid h-12 w-12 place-items-center rounded-full bg-success/15 [color:var(--success)]">
             <Droplet className="h-6 w-6" />
           </span>
-          <div>
+          <div className="flex-1">
             <p className="text-xs uppercase tracking-wider text-muted-foreground">{communeName}</p>
             <h3 className="font-display text-2xl font-semibold mt-1">L'eau coule normalement</h3>
             <p className="text-sm text-muted-foreground mt-1">Aucune coupure signalée actuellement.</p>
+            {communeId && (
+              <div className="mt-3">
+                <ReportDialog communeId={communeId} communeName={communeName} triggerLabel="Signaler un problème" />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -42,8 +56,15 @@ export function CurrentStatusCard({ communeName, outage }: { communeName: string
             <Stat label="Durée" value={formatDuration(minutes)} />
           </div>
           {outage.cause && <p className="mt-3 text-sm text-muted-foreground">{outage.cause}</p>}
-          <div className="mt-3 flex items-center gap-3">
+          <div className="mt-3 flex items-center gap-3 flex-wrap">
             <SourceBadge source={outage.source} score={outage.reliability_score} />
+            {communeId && (
+              <ReportDialog
+                communeId={communeId}
+                communeName={communeName}
+                triggerLabel={ongoing ? "Signaler" : "Signaler"}
+              />
+            )}
             <Link to="/carte" className="ml-auto text-xs font-medium text-primary hover:underline">Voir sur la carte →</Link>
           </div>
         </div>

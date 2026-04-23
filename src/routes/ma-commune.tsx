@@ -10,11 +10,12 @@ import { DayTimeline, DayPicker } from "@/components/outages/Timeline";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState } from "react";
-import { Heart, Plus, Trash2, Lock, Bell, Mail, Sparkles } from "lucide-react";
+import { Heart, Plus, Trash2, Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { canSeeForecasts, PLAN_CAPS, type Tier } from "@/lib/subscription";
-import { LockedFeature, UpsellCard } from "@/components/upsell/LockedFeature";
+import { UpsellCard } from "@/components/upsell/LockedFeature";
 import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
+import { NotificationPreferencesPanel } from "@/components/notifications/NotificationPreferencesPanel";
 
 export const Route = createFileRoute("/ma-commune")({
   component: MaCommunePage,
@@ -245,7 +246,7 @@ function Authed() {
             const cur = (ongoing.data ?? []).find((o) => o.commune_id === f.commune_id) ?? null;
             return (
               <div key={f.id} className="relative">
-                <CurrentStatusCard communeName={c?.name ?? "—"} outage={cur as any} />
+                <CurrentStatusCard communeName={c?.name ?? "—"} outage={cur as any} communeId={f.commune_id} />
                 <button onClick={() => removeFav(f.id)} className="absolute top-3 right-3 text-muted-foreground hover:text-destructive" aria-label="Retirer">
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -297,43 +298,7 @@ function Authed() {
           </div>
         )}
 
-        {/* Notifications panel — toggles visibles, certains verrouillés */}
-        <section className="rounded-2xl border border-border bg-card p-5 shadow-soft space-y-3">
-          <div className="flex items-center gap-2">
-            <Bell className="h-4 w-4 text-primary" />
-            <h2 className="font-display text-lg font-semibold">Notifications</h2>
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Choisissez comment être alerté. Les canaux SMS, WhatsApp et préventifs sont réservés aux plans payants.
-          </p>
-          <div className="space-y-2">
-            <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm">
-              <span className="flex items-center gap-2">
-                <Mail className="h-4 w-4 text-primary" />
-                Email <span className="text-[11px] text-muted-foreground">(inclus)</span>
-              </span>
-              <input type="checkbox" defaultChecked className="h-4 w-7 accent-primary" />
-            </label>
-            {caps.smsEnabled
-              ? <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm">
-                  <span>SMS</span>
-                  <input type="checkbox" className="h-4 w-7 accent-primary" />
-                </label>
-              : <LockedFeature label="SMS" variant="toggle" />}
-            {caps.whatsappEnabled
-              ? <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm">
-                  <span>WhatsApp</span>
-                  <input type="checkbox" className="h-4 w-7 accent-primary" />
-                </label>
-              : <LockedFeature label="WhatsApp" variant="toggle" />}
-            {caps.preventiveNotifications
-              ? <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm">
-                  <span>Notifications préventives (avant coupure)</span>
-                  <input type="checkbox" className="h-4 w-7 accent-primary" />
-                </label>
-              : <LockedFeature label="Notifications préventives (avant coupure)" variant="toggle" />}
-          </div>
-        </section>
+        <NotificationPreferencesPanel tier={tier} />
 
         <UpsellCard tier={tier} />
       </div>
