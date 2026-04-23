@@ -10,10 +10,11 @@ import { DayTimeline, DayPicker } from "@/components/outages/Timeline";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState } from "react";
-import { Heart, Plus, Trash2, Lock, Bell, Mail } from "lucide-react";
+import { Heart, Plus, Trash2, Lock, Bell, Mail, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { canSeeForecasts, PLAN_CAPS, type Tier } from "@/lib/subscription";
 import { LockedFeature, UpsellCard } from "@/components/upsell/LockedFeature";
+import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
 
 export const Route = createFileRoute("/ma-commune")({
   component: MaCommunePage,
@@ -51,23 +52,27 @@ function Authed() {
 
   const subscription = useQuery({
     queryKey: ["subscription", user!.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("subscriptions")
-        .select("tier, status")
-        .eq("user_id", user!.id)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
-    },
+    queryFn: () => fetchEffectiveSubscription(user!.id),
   });
   const tier: Tier = (subscription.data?.tier as Tier) ?? "free";
+  const trialActive = !!subscription.data?.trialActive;
+  const trialExpired = !!subscription.data?.trialExpired;
+  const trialEndsAt = subscription.data?.trialEndsAt ?? null;
   const caps = PLAN_CAPS[tier];
   const showForecasts = canSeeForecasts(tier);
   const forecastDays = caps.forecastDays;
-  const tierLabel = tier === "free" ? "Plan gratuit" : tier === "pro" ? "Plan Pro" : "Plan Business";
+  const tierLabel = tier === "free"
+    ? "Plan gratuit"
+    : tier === "pro"
+      ? trialActive ? "Essai Pro" : "Plan Pro"
+      : "Plan Business";
+
+  async function handleStartTrial() {
+    const r = await startProTrial(user!.id, 7);
+    if (!r.ok) return toast.error(r.reason ?? "Impossible de démarrer l'essai");
+    toast.success("Essai Pro démarré ! 7 jours pour tout tester.");
+    qc.invalidateQueries({ queryKey: ["subscription", user!.id] });
+  }
 
   const favs = useQuery({
     queryKey: ["favs", user!.id],
@@ -155,6 +160,40 @@ function Authed() {
             <span className="text-muted-foreground">commune{caps.maxCommunes > 1 ? "s" : ""} · {tierLabel}</span>
           </div>
         </header>
+
+        {/* Bandeau statut essai */}
+        {trialActive && trialEndsAt && (
+          <div className="rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm flex items-center gap-3">
+            <Sparkles className="h-4 w-4 text-primary shrink-0" />
+            <p className="flex-1">
+              <strong>Essai Pro actif</strong> — expire le{" "}
+              {new Date(trialEndsAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.
+              Vous bénéficiez de toutes les fonctionnalités Pro.
+            </p>
+            <Link to="/abonnements" className="text-xs font-semibold text-primary underline">Confirmer Pro</Link>
+          </div>
+        )}
+        {trialExpired && (
+          <div className="rounded-xl border border-warning/40 bg-warning/10 p-3 text-sm flex items-center gap-3">
+            <Lock className="h-4 w-4 text-warning shrink-0" />
+            <p className="flex-1">
+              Votre essai Pro est <strong>expiré</strong>. Vous êtes revenu au plan gratuit.
+            </p>
+            <Link to="/abonnements" className="text-xs font-semibold text-primary underline">Reprendre Pro</Link>
+          </div>
+        )}
+        {tier === "free" && !trialExpired && (
+          <div className="rounded-xl border border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 p-4 text-sm flex flex-wrap items-center gap-3">
+            <Sparkles className="h-4 w-4 text-primary shrink-0" />
+            <p className="flex-1 min-w-[200px]">
+              <strong>Essayez Pro gratuitement pendant 7 jours.</strong>{" "}
+              <span className="text-muted-foreground">Sans carte bancaire, sans engagement.</span>
+            </p>
+            <Button onClick={handleStartTrial} size="sm" className="bg-gradient-ocean text-primary-foreground">
+              Démarrer mon essai
+            </Button>
+          </div>
+        )}
 
         {/* Picker */}
         <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
