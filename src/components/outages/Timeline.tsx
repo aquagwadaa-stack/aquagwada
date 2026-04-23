@@ -3,7 +3,29 @@ import type { Forecast } from "@/lib/queries/forecasts";
 import { StatusBadge } from "./StatusBadge";
 import { SourceBadge } from "./SourceBadge";
 import { formatHM, formatDuration, durationBetween } from "@/lib/format";
-import { Clock, Sparkles } from "lucide-react";
+import { Clock, Sparkles, TrendingDown, TrendingUp, Minus } from "lucide-react";
+
+function TrendBadge({ trend }: { trend: Forecast["trend"] }) {
+  if (trend === "improving") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-success/10 border border-success/40 px-1.5 py-0.5 text-[10px] font-medium text-success">
+        <TrendingDown className="h-3 w-3" /> en amélioration
+      </span>
+    );
+  }
+  if (trend === "worsening") {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 border border-destructive/40 px-1.5 py-0.5 text-[10px] font-medium text-destructive">
+        <TrendingUp className="h-3 w-3" /> en aggravation
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-muted border border-border px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+      <Minus className="h-3 w-3" /> stable
+    </span>
+  );
+}
 
 /** Affiche les coupures d'une journée sous forme de timeline horaire. */
 export function DayTimeline({
@@ -156,6 +178,7 @@ export function DayTimeline({
               <span className="text-xs text-muted-foreground">
                 probabilité {Math.round(f.probability * 100)}% · confiance {Math.round(f.confidence * 100)}%
               </span>
+              <TrendBadge trend={f.trend} />
               {f.commune?.name && <span className="ml-auto text-xs text-muted-foreground">{f.commune.name}</span>}
             </li>
           ))}

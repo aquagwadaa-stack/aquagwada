@@ -11,6 +11,8 @@ export type Forecast = {
   expected_duration_minutes: number | null;
   basis: string | null;
   sample_size: number;
+  trend: "improving" | "stable" | "worsening";
+  day_of_week_signal: number;
   commune?: { name: string; slug: string } | null;
 };
 
