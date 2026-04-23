@@ -5,13 +5,16 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
 import { DayTimeline } from "@/components/outages/Timeline";
-import { Droplets, MapPin, Bell, ShieldCheck, Activity, Clock, Sparkles } from "lucide-react";
+import { Droplets, MapPin, Bell, ShieldCheck, Activity, Clock, Sparkles, Megaphone, Lock } from "lucide-react";
 import { motion } from "framer-motion";
 import { ForecastTeaserLocked } from "@/components/upsell/ForecastTeaser";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
 import { canSeeForecasts, type Tier } from "@/lib/subscription";
 import { fetchForecastsRange } from "@/lib/queries/forecasts";
+import { useMemo } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { ReportBlock } from "@/components/reports/ReportBlock";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -19,31 +22,73 @@ export const Route = createFileRoute("/")({
 
 function Index() {
   const { user } = useAuth();
-  const today = new Date();
-  const start = new Date(today); start.setHours(0, 0, 0, 0);
-  const end = new Date(today); end.setHours(23, 59, 59, 999);
-  const ongoing = useQuery({ queryKey: ["ongoing"], queryFn: fetchOngoingOutages });
+
+  // Bornes de date stabilisées (arrondies au jour) pour ne pas casser le cache.
+  const today = useMemo(() => new Date(), []);
+  const { startIso, endIso } = useMemo(() => {
+    const s = new Date(); s.setHours(0, 0, 0, 0);
+    const e = new Date(); e.setHours(23, 59, 59, 999);
+    return { startIso: s.toISOString(), endIso: e.toISOString() };
+  }, []);
+
+  const ongoing = useQuery({
+    queryKey: ["ongoing"],
+    queryFn: fetchOngoingOutages,
+    staleTime: 60_000,
+  });
   const todayOutages = useQuery({
-    queryKey: ["outages-today", start.toISOString(), end.toISOString()],
-    queryFn: () => fetchOutagesWindow(start.toISOString(), end.toISOString()),
+    queryKey: ["outages-today", startIso, endIso],
+    queryFn: () => fetchOutagesWindow(startIso, endIso),
+    staleTime: 60_000,
   });
   const sub = useQuery({
     queryKey: ["subscription", user?.id ?? "anon"],
     queryFn: () => fetchEffectiveSubscription(user!.id),
     enabled: !!user,
+    staleTime: 60_000,
   });
   const tier: Tier = (sub.data?.tier as Tier) ?? "free";
   // Visiteurs et plan gratuit : on bloque la timeline après "maintenant".
   const lockTimeline = !canSeeForecasts(tier);
 
+  // Communes favorites (filtrage liste & timeline pour utilisateurs connectés non-business)
+  const favs = useQuery({
+    queryKey: ["favs-min", user?.id ?? "anon"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_communes")
+        .select("commune_id")
+        .order("position");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+  const favIds = useMemo(() => (favs.data ?? []).map((f) => f.commune_id), [favs.data]);
+  const restrictToFavs = !!user && tier !== "business";
+  const todayFiltered = useMemo(() => {
+    const list = todayOutages.data ?? [];
+    if (!restrictToFavs) return list;
+    if (favIds.length === 0) return [];
+    return list.filter((o) => favIds.includes(o.commune_id));
+  }, [todayOutages.data, restrictToFavs, favIds]);
+  const noFavs = restrictToFavs && favIds.length === 0;
+
   // Prévisions à 14j visibles uniquement pour Pro/Business (essai inclus)
   const showForecasts = canSeeForecasts(tier);
-  const fromDate = new Date(today.getTime() + 86400_000).toISOString().slice(0, 10);
-  const toDate = new Date(today.getTime() + 14 * 86400_000).toISOString().slice(0, 10);
+  const { fromDate, toDate } = useMemo(() => {
+    const t = new Date();
+    return {
+      fromDate: new Date(t.getTime() + 86400_000).toISOString().slice(0, 10),
+      toDate: new Date(t.getTime() + 14 * 86400_000).toISOString().slice(0, 10),
+    };
+  }, []);
   const forecasts = useQuery({
-    queryKey: ["forecasts-home", fromDate, toDate],
-    queryFn: () => fetchForecastsRange(fromDate, toDate),
+    queryKey: ["forecasts-home", fromDate, toDate, restrictToFavs ? favIds.join(",") : "all"],
+    queryFn: () => fetchForecastsRange(fromDate, toDate, restrictToFavs ? favIds : undefined),
     enabled: showForecasts,
+    staleTime: 5 * 60_000,
   });
 
   return (
