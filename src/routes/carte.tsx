@@ -29,26 +29,72 @@ export const Route = createFileRoute("/carte")({
 });
 
 function CartePage() {
-  const today = new Date();
-  const start = new Date(today); start.setHours(0, 0, 0, 0);
-  const end = new Date(today); end.setHours(23, 59, 59, 999);
+  const { user } = useAuth();
 
-  const communes = useQuery({ queryKey: ["communes"], queryFn: fetchCommunes });
-  const ongoing = useQuery({ queryKey: ["ongoing"], queryFn: fetchOngoingOutages, refetchInterval: 60_000 });
+  // Bornes de date stabilisées (arrondies au jour) pour éviter les invalidations de cache.
+  const today = useMemo(() => new Date(), []);
+  const dayKey = useMemo(() => {
+    const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString();
+  }, []);
+  const { startIso, endIso } = useMemo(() => {
+    const s = new Date(dayKey); s.setHours(0, 0, 0, 0);
+    const e = new Date(dayKey); e.setHours(23, 59, 59, 999);
+    return { startIso: s.toISOString(), endIso: e.toISOString() };
+  }, [dayKey]);
+
+  const communes = useQuery({ queryKey: ["communes"], queryFn: fetchCommunes, staleTime: 5 * 60_000 });
+  const ongoing = useQuery({
+    queryKey: ["ongoing"],
+    queryFn: fetchOngoingOutages,
+    refetchInterval: 120_000,
+    staleTime: 60_000,
+  });
   const today24 = useQuery({
-    queryKey: ["outages-today", start.toISOString(), end.toISOString()],
-    queryFn: () => fetchOutagesWindow(start.toISOString(), end.toISOString()),
+    queryKey: ["outages-today", startIso, endIso],
+    queryFn: () => fetchOutagesWindow(startIso, endIso),
+    staleTime: 60_000,
   });
 
-  const { user } = useAuth();
   const sub = useQuery({
     queryKey: ["subscription", user?.id ?? "anon"],
     queryFn: () => fetchEffectiveSubscription(user!.id),
     enabled: !!user,
+    staleTime: 60_000,
   });
   const tier: Tier = (sub.data?.tier as Tier) ?? "free";
   const lockTimeline = !canSeeForecasts(tier);
-  const [pickedCommune, setPickedCommune] = useState<string>("");
+
+  // Communes favorites (pour filtrer la sidebar et la timeline en plan free/pro)
+  const favs = useQuery({
+    queryKey: ["favs-min", user?.id ?? "anon"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("user_communes")
+        .select("commune_id")
+        .order("position");
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+  const favIds = useMemo(() => (favs.data ?? []).map((f) => f.commune_id), [favs.data]);
+
+  // Règle :
+  //  - visiteurs : tout visible
+  //  - free connecté : seulement leurs favoris
+  //  - pro/trial : seulement leurs favoris (Business : tout)
+  const restrictToFavs = !!user && tier !== "business";
+  const filterByFavs = <T extends { commune_id: string }>(arr: T[] | undefined): T[] => {
+    const list = arr ?? [];
+    if (!restrictToFavs) return list;
+    if (favIds.length === 0) return [];
+    return list.filter((o) => favIds.includes(o.commune_id));
+  };
+
+  const ongoingFiltered = filterByFavs(ongoing.data);
+  const today24Filtered = filterByFavs(today24.data);
+  const noFavs = restrictToFavs && favIds.length === 0;
 
   return (
     <AppShell>
