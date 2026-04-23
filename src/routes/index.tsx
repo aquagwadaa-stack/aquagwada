@@ -11,6 +11,7 @@ import { ForecastTeaserLocked } from "@/components/upsell/ForecastTeaser";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
 import { canSeeForecasts, type Tier } from "@/lib/subscription";
+import { fetchForecastsRange } from "@/lib/queries/forecasts";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -34,6 +35,16 @@ function Index() {
   const tier: Tier = (sub.data?.tier as Tier) ?? "free";
   // Visiteurs et plan gratuit : on bloque la timeline après "maintenant".
   const lockTimeline = !canSeeForecasts(tier);
+
+  // Prévisions à 14j visibles uniquement pour Pro/Business (essai inclus)
+  const showForecasts = canSeeForecasts(tier);
+  const fromDate = new Date(today.getTime() + 86400_000).toISOString().slice(0, 10);
+  const toDate = new Date(today.getTime() + 14 * 86400_000).toISOString().slice(0, 10);
+  const forecasts = useQuery({
+    queryKey: ["forecasts-home", fromDate, toDate],
+    queryFn: () => fetchForecastsRange(fromDate, toDate),
+    enabled: showForecasts,
+  });
 
   return (
     <AppShell>
@@ -111,7 +122,11 @@ function Index() {
             </p>
           </div>
         </div>
-        <ForecastTeaserLocked />
+        {showForecasts ? (
+          <ForecastsUnlockedPreview forecasts={forecasts.data ?? []} loading={forecasts.isLoading} />
+        ) : (
+          <ForecastTeaserLocked />
+        )}
       </section>
 
       {/* FEATURES */}
