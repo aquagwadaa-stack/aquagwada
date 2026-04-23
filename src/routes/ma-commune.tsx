@@ -10,10 +10,10 @@ import { DayTimeline, DayPicker } from "@/components/outages/Timeline";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState } from "react";
-import { Heart, Plus, Trash2, Lock, Bell, Mail, Sparkles } from "lucide-react";
+import { Heart, Plus, Trash2, Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { canSeeForecasts, PLAN_CAPS, type Tier } from "@/lib/subscription";
-import { LockedFeature, UpsellCard } from "@/components/upsell/LockedFeature";
+import { UpsellCard } from "@/components/upsell/LockedFeature";
 import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
 import { NotificationPreferencesPanel } from "@/components/notifications/NotificationPreferencesPanel";
 
