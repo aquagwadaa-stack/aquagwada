@@ -244,50 +244,192 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   );
 }
 
-function ChannelToggle({
-  icon: Icon,
-  label,
-  badge,
-  locked,
-  checked,
-  onChange,
+/** Matrice événement × canal. Le bloc préventif est verrouillé pour le plan gratuit. */
+function NotifMatrix({
+  prefs,
+  caps,
+  update,
 }: {
-  icon?: typeof Mail;
-  label: string;
-  badge?: string;
-  locked?: boolean;
-  checked: boolean;
-  onChange: (v: boolean) => void;
+  prefs: Prefs;
+  caps: ReturnType<() => (typeof PLAN_CAPS)["free"]>;
+  update: (patch: Partial<Prefs>) => void;
 }) {
-  if (locked) {
-    return (
-      <Link
-        to="/abonnements"
-        className="flex items-center justify-between gap-3 rounded-lg border border-dashed border-border bg-muted/30 px-3 py-2 text-sm hover:border-primary/40 transition"
-      >
-        <span className="flex items-center gap-2 text-muted-foreground">
-          {Icon && <Icon className="h-4 w-4" />}
-          {label}
-        </span>
-        <span className="inline-flex items-center gap-1 text-[11px] font-medium text-primary">
-          <Lock className="h-3 w-3" /> {badge ?? "Pro"}
-        </span>
-      </Link>
-    );
-  }
+  type EventDef = {
+    key: "outage_start" | "water_back" | "preventive" | "preventive_water_back";
+    label: string;
+    icon: typeof Mail;
+    enabledKey: keyof Prefs;
+    locked?: boolean;
+    badge?: string;
+    desc?: string;
+  };
+  const events: EventDef[] = [
+    { key: "outage_start", label: "Début de coupure", icon: DropletOff, enabledKey: "notify_outage_start", desc: "Au moment où l'eau est coupée." },
+    { key: "water_back", label: "Retour de l'eau", icon: Droplet, enabledKey: "notify_water_back", desc: "Quand l'eau revient." },
+    { key: "preventive", label: "Préventif (avant coupure)", icon: Clock, enabledKey: "notify_preventive", locked: !caps.preventiveNotifications, badge: "Pro", desc: "Anticipez en remplissant des réserves." },
+    { key: "preventive_water_back", label: "Préventif (avant retour)", icon: Clock, enabledKey: "notify_preventive_water_back", locked: !caps.preventiveNotifications, badge: "Pro", desc: "Soyez prêt(e) avant que l'eau revienne." },
+  ];
+  const channels = [
+    { key: "email" as const, label: "Email", icon: Mail, enabledKey: "email_enabled" as keyof Prefs, locked: false, badge: "Inclus" },
+    { key: "sms" as const, label: "SMS", icon: MessageSquare, enabledKey: "sms_enabled" as keyof Prefs, locked: !caps.smsEnabled, badge: "Pro" },
+    { key: "whatsapp" as const, label: "WhatsApp", icon: MessageSquare, enabledKey: "whatsapp_enabled" as keyof Prefs, locked: !caps.whatsappEnabled, badge: "Pro" },
+  ];
+
   return (
-    <label className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card/50 px-3 py-2 text-sm cursor-pointer hover:bg-muted/30 transition">
-      <span className="flex items-center gap-2">
-        {Icon && <Icon className="h-4 w-4 text-primary" />}
-        {label}
-        {badge && <span className="text-[10px] rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground">{badge}</span>}
-      </span>
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="h-4 w-7 accent-primary cursor-pointer"
-      />
-    </label>
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+        Choisissez quoi recevoir, et comment
+      </p>
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="bg-muted/40 text-muted-foreground">
+              <th className="text-left px-3 py-2 font-medium">Événement</th>
+              {channels.map((c) => (
+                <th key={c.key} className="px-2 py-2 font-medium text-center w-[68px]">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <c.icon className="h-3.5 w-3.5 text-primary" />
+                    <span>{c.label}</span>
+                    {c.locked ? (
+                      <span className="inline-flex items-center gap-0.5 text-[9px] text-primary"><Lock className="h-2.5 w-2.5" />{c.badge}</span>
+                    ) : (
+                      <span className="text-[9px] text-muted-foreground/70">{c.badge}</span>
+                    )}
+                  </div>
+                </th>
+              ))}
+              <th className="px-2 py-2 font-medium text-center w-[64px]">Activé</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {events.map((ev) => {
+              const enabled = prefs[ev.enabledKey] as boolean;
+              if (ev.locked) {
+                return (
+                  <tr key={ev.key} className="bg-muted/20">
+                    <td className="px-3 py-2.5">
+                      <div className="flex items-center gap-2 text-muted-foreground">
+                        <ev.icon className="h-3.5 w-3.5" />
+                        <span className="font-medium">{ev.label}</span>
+                      </div>
+                      {ev.desc && <p className="text-[10px] text-muted-foreground/70 mt-0.5 ml-5">{ev.desc}</p>}
+                    </td>
+                    <td colSpan={channels.length + 1} className="px-2 py-2.5 text-center">
+                      <Link to="/abonnements" className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:underline">
+                        <Lock className="h-3 w-3" /> Réservé Pro — débloquer
+                      </Link>
+                    </td>
+                  </tr>
+                );
+              }
+              return (
+                <tr key={ev.key}>
+                  <td className="px-3 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <ev.icon className="h-3.5 w-3.5 text-primary" />
+                      <span className="font-medium">{ev.label}</span>
+                    </div>
+                    {ev.desc && <p className="text-[10px] text-muted-foreground mt-0.5 ml-5">{ev.desc}</p>}
+                  </td>
+                  {channels.map((c) => {
+                    const channelOn = prefs[c.enabledKey] as boolean;
+                    const cellActive = enabled && channelOn && !c.locked;
+                    return (
+                      <td key={c.key} className="text-center align-middle">
+                        {c.locked ? (
+                          <Lock className="h-3 w-3 text-muted-foreground/40 mx-auto" aria-label="Verrouillé" />
+                        ) : (
+                          <span className={`inline-block h-2 w-2 rounded-full ${cellActive ? "bg-primary" : "bg-border"}`} aria-hidden />
+                        )}
+                      </td>
+                    );
+                  })}
+                  <td className="text-center align-middle px-2">
+                    <input
+                      type="checkbox"
+                      checked={enabled}
+                      onChange={(e) => update({ [ev.enabledKey]: e.target.checked } as Partial<Prefs>)}
+                      className="h-4 w-4 accent-primary cursor-pointer"
+                      aria-label={`Activer ${ev.label}`}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+            {/* Ligne de toggles canaux globaux (pour activer/désactiver Email / SMS / WhatsApp d'un coup) */}
+            <tr className="bg-muted/20">
+              <td className="px-3 py-2 text-[10px] uppercase tracking-wider text-muted-foreground">
+                Canaux actifs
+              </td>
+              {channels.map((c) => (
+                <td key={c.key} className="text-center align-middle">
+                  {c.locked ? (
+                    <Link to="/abonnements" className="text-[10px] text-primary underline">débloquer</Link>
+                  ) : (
+                    <input
+                      type="checkbox"
+                      checked={prefs[c.enabledKey] as boolean}
+                      onChange={(e) => update({ [c.enabledKey]: e.target.checked } as Partial<Prefs>)}
+                      className="h-3.5 w-3.5 accent-primary cursor-pointer"
+                      aria-label={`Activer le canal ${c.label}`}
+                    />
+                  )}
+                </td>
+              ))}
+              <td />
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-[11px] text-muted-foreground">
+        Cochez d'abord les événements souhaités, puis les canaux à utiliser. Un événement n'est envoyé que si son canal est aussi actif.
+      </p>
+    </div>
+  );
+}
+
+function DelayPicker({
+  icon: Icon,
+  title,
+  value,
+  options,
+  onChange,
+  suffix,
+  hint,
+}: {
+  icon: typeof Mail;
+  title: string;
+  value: number;
+  options: number[];
+  onChange: (h: number) => void;
+  suffix: string;
+  hint: string;
+}) {
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
+        <Icon className="h-3 w-3" /> {title}
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((h) => {
+          const active = value === h;
+          return (
+            <button
+              key={h}
+              type="button"
+              onClick={() => onChange(h)}
+              className={`px-2.5 py-1 rounded-full border text-xs transition ${
+                active
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-card hover:border-primary/40"
+              }`}
+            >
+              {h}{suffix}
+            </button>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-[11px] text-muted-foreground">{hint}</p>
+    </div>
   );
 }
