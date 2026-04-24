@@ -1,152 +1,184 @@
-# Plan complet — finitions UI + roadmap opérationnelle
+# Plan d'implémentation — concrétisation de la roadmap
 
-## Partie A — Ce que je fais maintenant (code)
+## A. Recap de tes décisions
 
-### 1. Timelines : ligne par commune favorite + heures pointillées + état vide cliquable
+1. **Domaine** : `aquagwada.fr` chez OVH (4,99€/an) — reçu, mise en place : aquagwada.fr
+2. **Notifications** : combo PWA push + Email gratuit pour tout le monde, **pas de SMS/WhatsApp pour Pro** (push temps réel suffit), Business "à partir de 25€" avec SMS sur devis
+3. **ML** : enrichi avec stats internes + scraping complet SMGEAG (4 pages)
+4. **Facebook** : abandonné côté API (recommencer compte = perte de temps), je te donne quand même les étapes propres en chat ci-dessous mais on n'attend pas dessus
 
-Modification de `DayTimeline` pour supporter un nouveau mode "par commune" :
+---
 
-- Si on lui passe une liste de communes (favoris), il rend **une ligne horizontale par commune**, dans l'ordre des favoris, avec le nom de la commune à gauche, même si aucune coupure ce jour-là.
-- Sur chaque ligne, les coupures et prévisions de cette commune se positionnent normalement.
-- **Pointillés horaires légers** : grille verticale toutes les heures (24 lignes très discrètes `border-l border-dashed border-border/30`), au-dessus des barres horaires existantes tous les 3h.
-- Si la liste de communes est vide → bloc CTA centré "Ajoutez votre commune favorite pour voir vos timelines" → bouton vers `/ma-commune`.
-- Le verrouillage "futur du jour" (1h de teaser) reste appliqué identiquement par-dessus toutes les lignes.
+## B. Réponse à ta question PWA vs Apple Store / Google Play
 
-### 2. Branchement des favoris sur **toutes** les timelines du site
-
-- **Accueil (`/`)** : timeline déjà filtrée par favoris, mais en une seule ligne. Je passe en mode multi-lignes avec la liste des favoris (visiteur non connecté → mode actuel agrégé Guadeloupe en teaser).
-- **Carte (`/carte`)** : même chose, multi-lignes avec favoris.
-- **Ma commune (`/ma-commune`)** : déjà restreint aux favoris ; je passe également en mode multi-lignes pour cohérence.
-- Visiteurs non connectés : ligne unique "Guadeloupe" agrégée + CTA "Créer un compte pour suivre vos communes".
-
-### 3. Vérifications globales pendant la passe
-
-- Préférences notifications : confirmer que le job dispatcher respecte bien chaque toggle (déjà le cas dans `dispatch_notifications.ts`, je documente le tableau de skip).
-- Texte d'aide sur le bandeau "Pro = jusqu'à 5 communes" cohérent partout.
-
-## Partie B — Roadmap opérationnelle (ce que **toi** tu dois faire, étape par étape)
-
-Pour chaque chantier : ce que tu dois faire côté humain, et ce que je ferai automatiquement après.
-
-### B1. IA de prévisions fiables
-
-**État actuel** : moteur statistique v2 déjà en place (`generate_forecasts.ts`) — détecte patterns jours de semaine, plages horaires, tendances. Mais il a besoin d'historique réel pour devenir fiable.
-
-**Ce que tu dois faire** :
-
-1. Décider la stratégie de seed historique (voir B2).
-2. Une fois la base d'historique remplie (≥ 200 coupures réelles sur 6 mois minimum), me demander d'activer le job `generate-forecasts` en cron quotidien.
-3. Optionnellement : me demander d'ajouter un moteur ML (Lovable AI, Gemini) qui prendra l'historique en entrée et produira des prévisions enrichies (cause probable, communes voisines à risque).
-
-**Ce que je ferai** :
-
-- Cron quotidien `generate-forecasts` (3h du matin).
-- Si tu veux un boost ML : j'ajouterai un appel à `google/gemini-2.5-flash` via `LOVABLE_API_KEY` (déjà dispo, pas de clé à fournir). oui je veux 
-
-### B2. Base de données historique des coupures
-
-**État actuel** : table `outage_history` existe + trigger `archive_resolved_outages` qui archive automatiquement chaque coupure résolue. Mais elle est vide aujourd'hui car aucune source ne pousse de données.
-
-**Trois options pour remplir l'historique, à choisir** :
+**Différence concrète** :
 
 
-| Source                             | Ce que **toi** tu dois faire                                                                                                     | Ce que je ferai                                                                                |
-| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| **SMGEAG** (site officiel)         | Me confirmer l'URL exacte de la page "travaux/coupures" + me dire si tu as un contact qui peut donner accès à un export CSV/JSON | Finir le parser HTML dans `scraper_smgeag.ts` (déjà stub) + cron 15 min                        |
-| **Page Facebook Karu'Eaux/SMGEAG** | Créer une app Facebook Developer + me fournir un `FACEBOOK_PAGE_ACCESS_TOKEN` (Graph API, scope `pages_read_engagement`)         | Job `scraper_facebook.ts` qui lit les posts et extrait via Lovable AI les coupures structurées |
-| **Seed manuel CSV**                | M'envoyer un CSV avec colonnes `commune,starts_at,ends_at,cause` (même 1 an d'archive Excel/notes)                               | Script d'import one-shot                                                                       |
+| &nbsp;             | PWA installable                                     | App store native                      |
+| ------------------ | --------------------------------------------------- | ------------------------------------- |
+| Installation       | "Ajouter à l'écran d'accueil" depuis le navigateur  | Téléchargement App Store / Play Store |
+| Icône sur l'écran  | Oui, identique à une vraie app                      | Oui                                   |
+| Notifications push | **Oui, natives** (Android dès Android 5, iOS 16.4+) | Oui                                   |
+| Frais              | **0€**                                              | 100€/an Apple + 25€ une fois Google   |
+| Validation         | Aucune                                              | 1-2 semaines, peut être refusée       |
+| Mise à jour        | Instantanée (refresh page)                          | Re-soumission à valider               |
+| Visibilité magasin | Aucune                                              | Listée dans les stores                |
 
 
-**Recommandation** : commencer par **SMGEAG officiel** (légal, structuré) + **Facebook** (couvre l'informel temps réel). CSV en fallback pour bootstrap.
+**Comment l'utilisateur reçoit les notifs PWA** :
 
-### B3. Domaine email + envoi des notifications
+1. Il visite aquagwada.fr depuis son tel
+2. On lui propose "Installer l'app" (bannière)
+3. Il accepte → icône AquaGwada apparaît sur son écran d'accueil
+4. À la première ouverture de l'app installée, on demande "Voulez-vous recevoir des notifs en cas de coupure ?"
+5. Il accepte → on enregistre son endpoint push (Web Push Protocol)
+6. Quand on détecte une coupure → notification système (comme un SMS, sur l'écran de verrouillage, avec son et vibration), même app fermée
 
-**État actuel** : job `dispatch_notifications` complet, mais en **dry-run** (logs uniquement, aucun envoi réel).
+**Limitation iPhone** : iOS 16.4+ requis (mars 2023, donc 95%+ des iPhones aujourd'hui), ET l'utilisateur DOIT installer la PWA d'abord (pas juste visiter le site). Sur Android : marche partout, même sans installer.
 
-**Ce que tu dois faire** :
+---
 
-1. **Acheter un nom de domaine** (ex : `aquagwada.app`, `aquagwada.fr`) chez OVH/Gandi/Namecheap. Coût : ~10€/an.
-2. Me dire le domaine choisi → je lance le flux de configuration (boîte de dialogue) qui te demandera d'ajouter 2 enregistrements NS chez ton registrar. Délai DNS : 0 à 72h.
-3. Une fois vérifié, les emails partent automatiquement (le code est déjà prêt).
+## C. Ce que je vais coder maintenant
 
-**Ce que je ferai automatiquement après** :
+### 1. Refonte du pricing (DB + UI)
 
-- Templates React Email (début de coupure, retour de l'eau, préventif, fin d'essai à 12h).
-- Sortir le job dispatcher du dry-run et envoyer pour de vrai.
-- Cron rappel essai 12h avant expiration.
+**Migration SQL** sur `subscription_plans` :
 
-### B4. SMS et WhatsApp
+- **Free** : 0€, 1 commune, 7j historique, push + email, pas de préventif
+- **Pro** : **5,99€/mois** (au lieu de 7,99€), 5 communes, 365j historique, **push + email seulement** (sms_enabled=false, whatsapp_enabled=false), préventif activé, prévisions 14j
+- **Business** : **affiché "à partir de 25€" avec bouton "Devis"** au lieu d'un prix fixe, 100 communes, 1825j historique, SMS/WhatsApp sur devis, API B2B
 
-**État actuel** : préférences UI prêtes (toggles, validation E.164, blocage par plan), dispatcher prêt côté code, **aucun envoi réel**.
+**Mettre à jour** `src/lib/subscription.ts` (`PLAN_CAPS.pro` : `smsEnabled: false`, `whatsappEnabled: false`)
 
-**Ce que tu dois faire** :
+**Mettre à jour** `src/routes/abonnements.tsx` :
 
-1. Créer un compte **Twilio** (recommandé : gère SMS + WhatsApp dans une seule API).
-2. Provisionner un numéro Twilio capable d'envoyer en France/DOM (~1€/mois + ~0.07€ par SMS vers la Guadeloupe).
-3. Pour WhatsApp Business : valider un sender Twilio (procédure Meta, gratuite mais ~3 jours).
-4. Me fournir 3 secrets : `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` (et `TWILIO_WHATSAPP_FROM` pour WhatsApp).
+- Carte Business → afficher "à partir de 25€" + bouton "Demander un devis" (mailto:[contact@aquagwada.fr](mailto:contact@aquagwada.fr) ou formulaire)
+- Carte Pro → enlever mentions SMS/WhatsApp, mettre en avant "Notifications push instantanées"
 
-**Ce que je ferai** :
+**Mettre à jour** `NotificationPreferencesPanel.tsx` :
 
-- Brancher Twilio dans `dispatch_notifications.ts` côté SMS et WhatsApp.
-- Compteur d'usage par utilisateur (pour facturation et plafonds anti-abus).
+- Remplacer colonnes SMS/WhatsApp par **Push** + Email pour Free/Pro
+- Garder SMS/WhatsApp visibles **uniquement** pour Business (colonnes verrouillées sinon avec lien "Devis Business")
+- Bloc téléphone visible uniquement pour Business
+- Trigger DB `reset_paid_notification_prefs` mis à jour pour aussi reset les Business → Free
 
-**Alternative moins chère pour SMS uniquement** : OVH SMS API (~0.05€/SMS vers la Guadeloupe). Dis-moi si tu préfères.
+### 2. PWA installable + Web Push notifications
 
-### B5. Stripe (paiements Pro/Business)
+**Manifeste + service worker minimal** (sans `vite-plugin-pwa` qui casse la preview Lovable) :
 
-**Ce que tu dois faire** :
+- `public/manifest.webmanifest` : nom, icônes, couleur, `display: "standalone"`
+- `public/sw.js` : service worker minimal qui écoute `push` event et affiche la notif
+- `<link rel="manifest">` + meta theme-color dans `__root.tsx`
+- Composant `<PWAInstallPrompt>` : bannière discrète "Installer AquaGwada" (déclenche `beforeinstallprompt`)
+- Composant `<PushOptIn>` dans `NotificationPreferencesPanel` : bouton "Activer les notifs push" qui demande la permission navigateur, génère subscription endpoint, et la sauve en DB
 
-1. Créer un compte Stripe (gratuit, validation entreprise/auto-entrepreneur).
-2. Créer 2 produits dans Stripe Dashboard :
-  - "AquaGwada Pro" : prix mensuel + annuel
-  - "AquaGwada Business" : prix mensuel + annuel
-3. Me fournir : `STRIPE_SECRET_KEY` (côté serveur) + `STRIPE_WEBHOOK_SECRET`.
-4. Décider les prix.
+**Nouvelle table** `push_subscriptions` :
 
-**Ce que je ferai** :
+```
+id, user_id, endpoint (unique), p256dh, auth, user_agent, created_at
+```
 
-- Page checkout via Stripe Checkout (hosted, pas de PCI à gérer).
-- Webhook `/api/public/webhooks/stripe` qui synchronise `subscriptions` (statut, période, annulations).
-- Bouton "Gérer mon abonnement" → portail client Stripe.
-- Conversion auto à la fin de l'essai gratuit si CB renseignée.
+RLS : own only.
 
-### B6. Notifications — vérification que TOUT est respecté
+**Génération clés VAPID** : je génère une paire de clés VAPID (publique/privée) et les ajoute en secrets Lovable Cloud (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`).
 
-Voici ce que le dispatcher applique aujourd'hui (déjà codé) :
+**Edge function/server function** `send_push.ts` : utilise `web-push` (compatible Worker via API Web Push) pour envoyer une notif à un endpoint. Branchée dans `dispatch_notifications.ts` comme nouveau canal "push".
 
+**Mise à jour** `notification_preferences` : ajouter colonne `push_enabled boolean DEFAULT true` et `notification_logs.channel` accepte `'push'`.
 
-| Réglage utilisateur               | Comportement actuel                               |
-| --------------------------------- | ------------------------------------------------- |
-| `email_enabled = false`           | Aucun email envoyé                                |
-| `sms_enabled = false`             | Aucun SMS                                         |
-| `whatsapp_enabled = false`        | Aucun WhatsApp                                    |
-| `notify_outage_start = false`     | Skip événements "début"                           |
-| `notify_water_back = false`       | Skip événements "retour"                          |
-| `notify_preventive = false`       | Skip événements préventifs                        |
-| `preventive_hours_before` (1–48h) | Envoi à ±10 min de la cible                       |
-| `quiet_hours_start/end`           | Skip notifs **non urgentes** dans la plage        |
-| Téléphone vide                    | SMS/WhatsApp skip même si activés                 |
-| Idempotence                       | Une seule notif par (user, outage, kind, channel) |
+**Garde-fou preview Lovable** : le SW ne s'enregistre **pas** si on est dans un iframe ou sur `*.lovable.app` preview (cf. règles PWA). Il s'enregistre uniquement sur `aquagwada.fr` en prod.
 
+### 3. Scraping SMGEAG complet (les 4 pages)
 
-Je vais ajouter dans la passe en cours : un petit panneau "Logs des dernières notifications envoyées" dans `/ma-commune` pour que tu vérifies visuellement ce qui se déclenche.
+URLs scrapées toutes les 15 min :
 
-## Partie C — Récap des fichiers que je modifie maintenant
+- `https://www.smgeag.fr/les-actualites/` → annonces générales (or pour ML)
+- `https://www.smgeag.fr/travaux-3/` → travaux planifiés
+- `https://www.smgeag.fr/informations-reseau/` → état réseau
+- `https://www.smgeag.fr/` → home (carrousel d'alertes en cours)
 
-- `src/components/outages/Timeline.tsx` — mode multi-communes + pointillés horaires + état vide cliquable
-- `src/routes/index.tsx` — branchement multi-lignes favoris
-- `src/routes/carte.tsx` — branchement multi-lignes favoris
-- `src/routes/ma-commune.tsx` — passage au mode multi-lignes
-- `src/components/notifications/NotificationPreferencesPanel.tsx` — petit panneau "dernières notifs envoyées (logs)"
+**Nouveau scraper** `src/server/jobs/scraper_smgeag.ts` (refonte) :
 
-## Partie D — Ordre conseillé pour la mise en production
+- Fetch des 4 URL en parallèle
+- Parser HTML avec **regex + extraction texte** (pas de cheerio — Worker compatible : utilise `linkedom` qui marche en Worker, sinon regex sur les patterns connus)
+- Pour chaque bloc trouvé : extraire `commune`, `date`, `heure_début`, `heure_fin`, `cause`, `secteur`
+- **Match commune** : normaliser (minuscules, sans accents) puis chercher dans la table `communes` avec un fallback "fuzzy" (Levenshtein ≤ 2)
+- **Déduplication** : `external_id = sha256(source_url + starts_at + commune_id)` → upsert sans doublon
+- **Ingestion** : insérer dans `outages` (status `scheduled` si futur, `ongoing` si en cours) avec `source = 'scraping'`, `source_url`, `reliability_score = 0.85`
 
-1. ✅ Maintenant : timelines multi-lignes (auto)
-2. 🟡 Toi : acheter le domaine email → me prévenir
-3. 🟡 Toi : décider source historique (SMGEAG / Facebook / CSV) → m'envoyer ce qu'il faut
-4. 🟡 Toi : créer compte Twilio → me filer les 3 secrets
-5. 🟡 Toi : créer compte Stripe + produits → me filer les 2 secrets
-6. ✅ Moi : tout brancher dans l'ordre, désactiver tous les dry-runs, publier
+**Nouvelle table** `scraper_runs` :
 
-Une fois ces 4 chantiers humains démarrés en parallèle, je peux tout finaliser en une seule passe.
+```
+id, source ('smgeag'), url, started_at, finished_at, items_found, items_inserted, ok boolean, error text
+```
+
+RLS : admin only. Pour suivre la santé du scraper.
+
+**Cron pg_cron** : déjà en place sur `/api/public/jobs/scrape-smgeag` toutes les 15 min, je vérifie/branche.
+
+### 4. Boost ML — enrichi par les nouvelles données scrappées
+
+Le moteur `generate_forecasts.ts` lit déjà `outage_history` + `outages` resolved/cancelled. Avec le scraping qui alimente massivement `outages`, le ML va **automatiquement** s'enrichir au fil du temps :
+
+- À chaque coupure scrapée qui se termine → trigger `archive_resolved_outages` la copie en `outage_history`
+- Le job `generate_forecasts` (cron quotidien) re-calcule les patterns avec ces nouvelles données
+
+**Améliorations supplémentaires du ML que j'apporte** :
+
+- **Pondération par source** : coupures officielles SMGEAG = poids 1.0, scraping = 0.85, user_report = 0.5 (déjà partiellement géré, je consolide)
+- **Pattern saisonnier** : ajout d'un signal mensuel (saison sèche déc-mai = plus de coupures en Guadeloupe)
+- **Détection de récurrence** : si une commune a 3+ coupures le même jour de la semaine au même créneau → probabilité boostée
+- **Confiance affichée** plus précise : intègre l'âge moyen des données
+
+### 5. Page admin "Santé scraper"
+
+Petit panneau `/admin/scraper` (admin only) qui montre :
+
+- Dernière exécution de chaque source
+- Nb d'items trouvés / insérés
+- Erreurs récentes
+- Bouton "Lancer maintenant"
+
+(Optionnel mais utile pour ne pas voler aveugle.)
+
+---
+
+## D. Ordre d'exécution
+
+1. Migration DB (pricing + push_subscriptions + scraper_runs + colonnes prefs)
+2. Refonte UI abonnements + matrice notif (Pro sans SMS, Business sur devis)
+3. Manifest + SW + composant PushOptIn + génération VAPID + intégration dans dispatch
+4. Refonte scraper SMGEAG 4 pages + cron + page admin santé
+5. Améliorations ML + re-génération initiale des forecasts
+
+Tout dans la même passe. Ensuite on attend juste ton domaine OVH pour brancher l'envoi email réel (le push lui marche dès qu'on déploie en prod sur `aquagwada.fr`).
+
+---
+
+## E. Étapes Facebook (pour plus tard, si tu veux retenter)
+
+Données en chat hors plan puisque tu m'as dit que tu repartais à zéro :
+
+1. Va sur [https://developers.facebook.com](https://developers.facebook.com) → "Get Started"
+2. Étape "About you" (ta capture) : choisis **"Autre"** (le plus neutre, évite "Développeur" qui demande parfois des infos pro)
+3. Termine l'inscription
+4. Crée une nouvelle app : type **"Business"**
+5. Dans l'app → Add Product → **"Pages API"**
+6. Dans "App Review" → Permissions → demander :
+  - `pages_read_engagement`
+  - `pages_manage_metadata`
+  - `pages_read_user_content`
+7. Génère un **Page Access Token longue durée** (60 jours, renouvelable) depuis Graph API Explorer
+8. Envoie-moi le token + Page ID de SMGEAG → je branche
+
+**Plan B sans Facebook** : tu m'envoies un export manuel des posts SMGEAG en CSV/texte une fois et je le digère pour seed l'historique. Mais avec les 4 pages SMGEAG scrappées, on a déjà 90% de la valeur.
+
+---
+
+## F. Ce qui reste à faire après cette passe
+
+- 🟡 Tu m'envoies le domaine OVH dès livré → je configure DNS + active emails Lovable avec `notifications@aquagwada.fr`
+- 🟡 Stripe : tu créais le compte → je branche le paiement Pro 5,99€ (Business reste sur devis manuel)
+- 🟡 Facebook : optionnel, plus tard
+
+Tu valides ce plan, je code tout d'un coup.
