@@ -148,6 +148,7 @@ export type Database = {
           notify_water_back: boolean
           preventive_hours_before: number
           preventive_water_back_hours_before: number
+          push_enabled: boolean
           quiet_hours_end: string | null
           quiet_hours_start: string | null
           sms_enabled: boolean
@@ -163,6 +164,7 @@ export type Database = {
           notify_water_back?: boolean
           preventive_hours_before?: number
           preventive_water_back_hours_before?: number
+          push_enabled?: boolean
           quiet_hours_end?: string | null
           quiet_hours_start?: string | null
           sms_enabled?: boolean
@@ -178,6 +180,7 @@ export type Database = {
           notify_water_back?: boolean
           preventive_hours_before?: number
           preventive_water_back_hours_before?: number
+          push_enabled?: boolean
           quiet_hours_end?: string | null
           quiet_hours_start?: string | null
           sms_enabled?: boolean
@@ -345,6 +348,39 @@ export type Database = {
         }
         Relationships: []
       }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          endpoint: string
+          id: string
+          last_seen_at: string
+          p256dh: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          endpoint: string
+          id?: string
+          last_seen_at?: string
+          p256dh: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          endpoint?: string
+          id?: string
+          last_seen_at?: string
+          p256dh?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       reports: {
         Row: {
           comment: string | null
@@ -388,6 +424,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      scraper_runs: {
+        Row: {
+          error: string | null
+          finished_at: string | null
+          id: string
+          items_found: number
+          items_inserted: number
+          items_updated: number
+          notes: string | null
+          ok: boolean
+          source: string
+          started_at: string
+          url: string
+        }
+        Insert: {
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          items_found?: number
+          items_inserted?: number
+          items_updated?: number
+          notes?: string | null
+          ok?: boolean
+          source: string
+          started_at?: string
+          url: string
+        }
+        Update: {
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          items_found?: number
+          items_inserted?: number
+          items_updated?: number
+          notes?: string | null
+          ok?: boolean
+          source?: string
+          started_at?: string
+          url?: string
+        }
+        Relationships: []
       }
       subscription_plans: {
         Row: {
