@@ -134,12 +134,14 @@ export async function generateForecasts(): Promise<{ generated: number; communes
       duration_minutes: h.duration_minutes,
       weight: sourceWeight(h.source, h.reliability_score),
     }))),
-    ...((resolvedOutages ?? []).map((r: { commune_id: string; starts_at: string; ends_at: string; source: string | null; reliability_score: number | null }) => ({
-      commune_id: r.commune_id,
-      starts_at: r.starts_at,
-      duration_minutes: Math.max(1, Math.round((new Date(r.ends_at).getTime() - new Date(r.starts_at).getTime()) / 60000)),
-      weight: sourceWeight(r.source, r.reliability_score),
-    }))),
+    ...((resolvedOutages ?? [])
+      .filter((r): r is typeof r & { ends_at: string } => !!r.ends_at)
+      .map((r) => ({
+        commune_id: r.commune_id,
+        starts_at: r.starts_at,
+        duration_minutes: Math.max(1, Math.round((new Date(r.ends_at).getTime() - new Date(r.starts_at).getTime()) / 60000)),
+        weight: sourceWeight(r.source, r.reliability_score),
+      }))),
   ];
 
   // Tri par date asc pour le calcul de tendance
