@@ -274,8 +274,10 @@ export function DayTimeline({
                       style={{ left: `${left}%`, width: `${Math.min(100 - left, widthPct)}%` }}
                       title={`Prévision ${Math.round(f.probability * 100)}% · ${f.basis ?? ""}`}
                     >
-                      <span className="text-[10px] font-medium truncate">
-                        {f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)}
+                      <span className="text-[10px] font-medium truncate flex items-center gap-1">
+                        <Sparkles className="h-2.5 w-2.5 shrink-0" />
+                        <span className="truncate">{f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)}</span>
+                        <span className="ml-auto pl-1 font-semibold text-warning-foreground/90">{Math.round(f.probability * 100)}%</span>
                       </span>
                     </div>
                   );
