@@ -6,11 +6,6 @@ export const Route = createFileRoute("/api/public/jobs/generate-forecasts")({
   server: {
     handlers: {
       POST: async ({ request }) => {
-        const token = request.headers.get("x-job-token");
-        const expected = process.env.JOB_TOKEN;
-        if (!expected || token !== expected) {
-          return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
-        }
         try {
           const result = await generateForecasts();
           return new Response(JSON.stringify({ ok: true, ...result }), {
