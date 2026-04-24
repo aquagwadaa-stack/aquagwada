@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Link } from "@tanstack/react-router";
 import { PLAN_CAPS, type Tier } from "@/lib/subscription";
+import { EnablePushButton } from "@/components/notifications/EnablePushButton";
 
 type Prefs = {
   email_enabled: boolean;
@@ -139,6 +140,17 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
       <div className="flex items-center gap-2">
         <Bell className="h-4 w-4 text-primary" />
         <h2 className="font-display text-lg font-semibold">Notifications</h2>
+      </div>
+
+      {/* Notifications push (PWA) — gratuit pour tous, instantané, illimité. */}
+      <div className="rounded-xl border border-border bg-muted/30 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-1">
+          Notifications instantanées (push)
+        </p>
+        <p className="text-xs text-muted-foreground mb-3">
+          Reçois les alertes en temps réel sur ton téléphone, même app fermée. Gratuit, illimité, fonctionne après installation de l'app.
+        </p>
+        <EnablePushButton />
       </div>
 
       {/* Téléphone : visible uniquement pour Pro / Business (canaux SMS / WhatsApp accessibles) */}
