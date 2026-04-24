@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { sendPushToUser, type PushPayload } from "@/server/notifications/send_push";
 
 /**
  * Job de dispatch des notifications (dry-run par défaut).
@@ -18,6 +19,7 @@ type Pref = {
   email_enabled: boolean;
   sms_enabled: boolean;
   whatsapp_enabled: boolean;
+  push_enabled: boolean;
   notify_outage_start: boolean;
   notify_water_back: boolean;
   notify_preventive: boolean;
@@ -146,24 +148,50 @@ export async function dispatchNotifications(): Promise<{
           skipped += 1; continue;
         }
 
-        const channels: Array<"email" | "sms" | "whatsapp"> = [];
+        const channels: Array<"email" | "sms" | "whatsapp" | "push"> = [];
         if (p.email_enabled) channels.push("email");
         if (p.sms_enabled && phoneById.get(p.user_id)) channels.push("sms");
         if (p.whatsapp_enabled && phoneById.get(p.user_id)) channels.push("whatsapp");
+        if (p.push_enabled) channels.push("push");
         if (channels.length === 0) { skipped += 1; continue; }
 
         for (const ch of channels) {
+          const isPush = ch === "push";
+          // Push : envoi réel (gratuit, instantané) ; autres canaux : dry-run.
+          if (isPush) {
+            const commune = await supabaseAdmin.from("communes").select("name").eq("id", o.commune_id).maybeSingle();
+            const communeName = commune.data?.name ?? "votre commune";
+            const titles: Record<typeof kind, string> = {
+              outage_start: `🚱 Coupure d'eau à ${communeName}`,
+              water_back: `💧 Eau de retour à ${communeName}`,
+              preventive: `⏰ Coupure prévue à ${communeName}`,
+              preventive_water_back: `🔜 Eau bientôt de retour à ${communeName}`,
+            };
+            const bodies: Record<typeof kind, string> = {
+              outage_start: `Une coupure vient de débuter. Suis l'évolution dans l'app.`,
+              water_back: `L'eau a été rétablie. Pense à purger les premiers litres.`,
+              preventive: `Coupure planifiée le ${new Date(o.starts_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}.`,
+              preventive_water_back: `Retour de l'eau prévu vers ${o.ends_at ? new Date(o.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}.`,
+            };
+            const payload: PushPayload = {
+              title: titles[kind],
+              body: bodies[kind],
+              url: "/ma-commune",
+              tag: `${kind}-${o.id}`,
+            };
+            try { await sendPushToUser(p.user_id, payload); } catch (e) { console.warn("[push] dispatch err", e); }
+          }
           const { error } = await supabaseAdmin.from("notification_logs").insert({
             user_id: p.user_id,
             outage_id: o.id,
             channel: ch,
             kind,
-            dry_run: true,
+            dry_run: !isPush,
             payload: {
               commune_id: o.commune_id,
               starts_at: o.starts_at,
               ends_at: o.ends_at,
-              note: "dry-run: aucun envoi réel tant que le domaine email/SMS n'est pas configuré",
+              note: isPush ? "push envoyé via VAPID" : "dry-run: aucun envoi réel tant que le domaine email/SMS n'est pas configuré",
             },
           });
           // Conflit unique = déjà envoyé, on saute silencieusement
