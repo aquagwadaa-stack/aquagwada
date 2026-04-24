@@ -36,11 +36,15 @@ export const Route = createRootRoute({
       { title: "AquaGwada — Suivi des coupures d'eau en Guadeloupe" },
       { name: "description", content: "Suivez en temps réel les coupures d'eau en Guadeloupe : carte, timeline, prévisions et alertes par commune." },
       { name: "author", content: "AquaGwada" },
-      { property: "og:title", content: "AquaGwada — Coupures d'eau en Guadeloupe" },
-      { property: "og:description", content: "Carte, timeline, prévisions et alertes des coupures d'eau en Guadeloupe." },
+      { property: "og:title", content: "AquaGwada — Suivi des coupures d'eau en Guadeloupe" },
+      { property: "og:description", content: "Suivez en temps réel les coupures d'eau en Guadeloupe : carte, timeline, prévisions et alertes par commune." },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary" },
       { name: "twitter:site", content: "@AquaGwada" },
+      { name: "twitter:title", content: "AquaGwada — Suivi des coupures d'eau en Guadeloupe" },
+      { name: "twitter:description", content: "Suivez en temps réel les coupures d'eau en Guadeloupe : carte, timeline, prévisions et alertes par commune." },
+      { property: "og:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/908ac86b-33e3-4e6b-9b33-790bb35b23da/id-preview-0e1fae4c--4d1e1f24-748a-4a39-8b5a-a2444d4d01f2.lovable.app-1777055721273.png" },
+      { name: "twitter:image", content: "https://pub-bb2e103a32db4e198524a2e9ed8f35b4.r2.dev/908ac86b-33e3-4e6b-9b33-790bb35b23da/id-preview-0e1fae4c--4d1e1f24-748a-4a39-8b5a-a2444d4d01f2.lovable.app-1777055721273.png" },
     ],
     links: [
       {
