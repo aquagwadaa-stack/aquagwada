@@ -1,184 +1,106 @@
-# Plan d'implémentation — concrétisation de la roadmap
+# Plan d'implémentation — PWA, Notifs Push, Scraper SMGEAG, ML
 
-## A. Recap de tes décisions
-
-1. **Domaine** : `aquagwada.fr` chez OVH (4,99€/an) — reçu, mise en place : aquagwada.fr
-2. **Notifications** : combo PWA push + Email gratuit pour tout le monde, **pas de SMS/WhatsApp pour Pro** (push temps réel suffit), Business "à partir de 25€" avec SMS sur devis
-3. **ML** : enrichi avec stats internes + scraping complet SMGEAG (4 pages)
-4. **Facebook** : abandonné côté API (recommencer compte = perte de temps), je te donne quand même les étapes propres en chat ci-dessous mais on n'attend pas dessus
+Les clés VAPID sont en place. Voici tout ce que je vais coder dans la foulée, regroupé en 4 blocs.
 
 ---
 
-## B. Réponse à ta question PWA vs Apple Store / Google Play
+## Bloc 1 — PWA installable (remplace une vraie app iOS/Android)
 
-**Différence concrète** :
+**Pourquoi PWA et pas Apple Store / Google Play ?**
+- **PWA** = ton site devient installable depuis le navigateur (bouton "Ajouter à l'écran d'accueil"). Icône sur le téléphone exactement comme une vraie app, plein écran, fonctionne hors-ligne.
+- **Pas de frais** : Apple Store = 99$/an + 30% de commission. Google Play = 25$ une fois + 15-30% commission. PWA = 0€.
+- **Pas de validation** : pas besoin d'attendre 1-2 semaines de review Apple. Tu publies, c'est en ligne.
+- **Notifs push** : fonctionnent sur Android (Chrome, Firefox, Edge) et iOS 16.4+ (Safari, à condition d'installer la PWA sur l'écran d'accueil).
+- **Limite honnête** : sur iOS, l'utilisateur DOIT installer la PWA via Safari pour recevoir les notifs (un bandeau dans l'app expliquera comment faire).
 
-
-| &nbsp;             | PWA installable                                     | App store native                      |
-| ------------------ | --------------------------------------------------- | ------------------------------------- |
-| Installation       | "Ajouter à l'écran d'accueil" depuis le navigateur  | Téléchargement App Store / Play Store |
-| Icône sur l'écran  | Oui, identique à une vraie app                      | Oui                                   |
-| Notifications push | **Oui, natives** (Android dès Android 5, iOS 16.4+) | Oui                                   |
-| Frais              | **0€**                                              | 100€/an Apple + 25€ une fois Google   |
-| Validation         | Aucune                                              | 1-2 semaines, peut être refusée       |
-| Mise à jour        | Instantanée (refresh page)                          | Re-soumission à valider               |
-| Visibilité magasin | Aucune                                              | Listée dans les stores                |
-
-
-**Comment l'utilisateur reçoit les notifs PWA** :
-
-1. Il visite aquagwada.fr depuis son tel
-2. On lui propose "Installer l'app" (bannière)
-3. Il accepte → icône AquaGwada apparaît sur son écran d'accueil
-4. À la première ouverture de l'app installée, on demande "Voulez-vous recevoir des notifs en cas de coupure ?"
-5. Il accepte → on enregistre son endpoint push (Web Push Protocol)
-6. Quand on détecte une coupure → notification système (comme un SMS, sur l'écran de verrouillage, avec son et vibration), même app fermée
-
-**Limitation iPhone** : iOS 16.4+ requis (mars 2023, donc 95%+ des iPhones aujourd'hui), ET l'utilisateur DOIT installer la PWA d'abord (pas juste visiter le site). Sur Android : marche partout, même sans installer.
+**Ce que je crée :**
+- `public/manifest.webmanifest` — déclare le nom (AquaGwada), l'icône, les couleurs, le mode plein écran
+- `public/sw.js` — service worker qui gère la réception des notifs push même app fermée
+- `public/icon-192.png` + `public/icon-512.png` — icônes générées (logo goutte d'eau bleue sur fond blanc)
+- `src/lib/push-notifications.ts` — logique d'inscription aux notifs (demande la permission, enregistre l'endpoint en BDD)
+- `src/components/InstallPWAPrompt.tsx` — bandeau "Installer AquaGwada" qui s'affiche au bon moment
+- `src/routes/__root.tsx` — injection du manifest + enregistrement du SW (avec le garde-fou anti-iframe pour le preview Lovable)
 
 ---
 
-## C. Ce que je vais coder maintenant
+## Bloc 2 — Edge function d'envoi des notifs push
 
-### 1. Refonte du pricing (DB + UI)
+**Comment ça marche concrètement :**
+1. L'utilisateur ouvre l'app, clique "Activer les notifications" → son téléphone reçoit un endpoint unique du serveur push (Google FCM ou Apple) → on le stocke dans `push_subscriptions`.
+2. Quand une nouvelle coupure SMGEAG est détectée → notre serveur envoie un message au serveur push de Google/Apple → le téléphone affiche la notif (même app fermée).
+3. Coût : **0€** (les serveurs push de Google/Apple sont gratuits, illimités).
 
-**Migration SQL** sur `subscription_plans` :
-
-- **Free** : 0€, 1 commune, 7j historique, push + email, pas de préventif
-- **Pro** : **5,99€/mois** (au lieu de 7,99€), 5 communes, 365j historique, **push + email seulement** (sms_enabled=false, whatsapp_enabled=false), préventif activé, prévisions 14j
-- **Business** : **affiché "à partir de 25€" avec bouton "Devis"** au lieu d'un prix fixe, 100 communes, 1825j historique, SMS/WhatsApp sur devis, API B2B
-
-**Mettre à jour** `src/lib/subscription.ts` (`PLAN_CAPS.pro` : `smsEnabled: false`, `whatsappEnabled: false`)
-
-**Mettre à jour** `src/routes/abonnements.tsx` :
-
-- Carte Business → afficher "à partir de 25€" + bouton "Demander un devis" (mailto:[contact@aquagwada.fr](mailto:contact@aquagwada.fr) ou formulaire)
-- Carte Pro → enlever mentions SMS/WhatsApp, mettre en avant "Notifications push instantanées"
-
-**Mettre à jour** `NotificationPreferencesPanel.tsx` :
-
-- Remplacer colonnes SMS/WhatsApp par **Push** + Email pour Free/Pro
-- Garder SMS/WhatsApp visibles **uniquement** pour Business (colonnes verrouillées sinon avec lien "Devis Business")
-- Bloc téléphone visible uniquement pour Business
-- Trigger DB `reset_paid_notification_prefs` mis à jour pour aussi reset les Business → Free
-
-### 2. PWA installable + Web Push notifications
-
-**Manifeste + service worker minimal** (sans `vite-plugin-pwa` qui casse la preview Lovable) :
-
-- `public/manifest.webmanifest` : nom, icônes, couleur, `display: "standalone"`
-- `public/sw.js` : service worker minimal qui écoute `push` event et affiche la notif
-- `<link rel="manifest">` + meta theme-color dans `__root.tsx`
-- Composant `<PWAInstallPrompt>` : bannière discrète "Installer AquaGwada" (déclenche `beforeinstallprompt`)
-- Composant `<PushOptIn>` dans `NotificationPreferencesPanel` : bouton "Activer les notifs push" qui demande la permission navigateur, génère subscription endpoint, et la sauve en DB
-
-**Nouvelle table** `push_subscriptions` :
-
-```
-id, user_id, endpoint (unique), p256dh, auth, user_agent, created_at
-```
-
-RLS : own only.
-
-**Génération clés VAPID** : je génère une paire de clés VAPID (publique/privée) et les ajoute en secrets Lovable Cloud (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`).
-
-**Edge function/server function** `send_push.ts` : utilise `web-push` (compatible Worker via API Web Push) pour envoyer une notif à un endpoint. Branchée dans `dispatch_notifications.ts` comme nouveau canal "push".
-
-**Mise à jour** `notification_preferences` : ajouter colonne `push_enabled boolean DEFAULT true` et `notification_logs.channel` accepte `'push'`.
-
-**Garde-fou preview Lovable** : le SW ne s'enregistre **pas** si on est dans un iframe ou sur `*.lovable.app` preview (cf. règles PWA). Il s'enregistre uniquement sur `aquagwada.fr` en prod.
-
-### 3. Scraping SMGEAG complet (les 4 pages)
-
-URLs scrapées toutes les 15 min :
-
-- `https://www.smgeag.fr/les-actualites/` → annonces générales (or pour ML)
-- `https://www.smgeag.fr/travaux-3/` → travaux planifiés
-- `https://www.smgeag.fr/informations-reseau/` → état réseau
-- `https://www.smgeag.fr/` → home (carrousel d'alertes en cours)
-
-**Nouveau scraper** `src/server/jobs/scraper_smgeag.ts` (refonte) :
-
-- Fetch des 4 URL en parallèle
-- Parser HTML avec **regex + extraction texte** (pas de cheerio — Worker compatible : utilise `linkedom` qui marche en Worker, sinon regex sur les patterns connus)
-- Pour chaque bloc trouvé : extraire `commune`, `date`, `heure_début`, `heure_fin`, `cause`, `secteur`
-- **Match commune** : normaliser (minuscules, sans accents) puis chercher dans la table `communes` avec un fallback "fuzzy" (Levenshtein ≤ 2)
-- **Déduplication** : `external_id = sha256(source_url + starts_at + commune_id)` → upsert sans doublon
-- **Ingestion** : insérer dans `outages` (status `scheduled` si futur, `ongoing` si en cours) avec `source = 'scraping'`, `source_url`, `reliability_score = 0.85`
-
-**Nouvelle table** `scraper_runs` :
-
-```
-id, source ('smgeag'), url, started_at, finished_at, items_found, items_inserted, ok boolean, error text
-```
-
-RLS : admin only. Pour suivre la santé du scraper.
-
-**Cron pg_cron** : déjà en place sur `/api/public/jobs/scrape-smgeag` toutes les 15 min, je vérifie/branche.
-
-### 4. Boost ML — enrichi par les nouvelles données scrappées
-
-Le moteur `generate_forecasts.ts` lit déjà `outage_history` + `outages` resolved/cancelled. Avec le scraping qui alimente massivement `outages`, le ML va **automatiquement** s'enrichir au fil du temps :
-
-- À chaque coupure scrapée qui se termine → trigger `archive_resolved_outages` la copie en `outage_history`
-- Le job `generate_forecasts` (cron quotidien) re-calcule les patterns avec ces nouvelles données
-
-**Améliorations supplémentaires du ML que j'apporte** :
-
-- **Pondération par source** : coupures officielles SMGEAG = poids 1.0, scraping = 0.85, user_report = 0.5 (déjà partiellement géré, je consolide)
-- **Pattern saisonnier** : ajout d'un signal mensuel (saison sèche déc-mai = plus de coupures en Guadeloupe)
-- **Détection de récurrence** : si une commune a 3+ coupures le même jour de la semaine au même créneau → probabilité boostée
-- **Confiance affichée** plus précise : intègre l'âge moyen des données
-
-### 5. Page admin "Santé scraper"
-
-Petit panneau `/admin/scraper` (admin only) qui montre :
-
-- Dernière exécution de chaque source
-- Nb d'items trouvés / insérés
-- Erreurs récentes
-- Bouton "Lancer maintenant"
-
-(Optionnel mais utile pour ne pas voler aveugle.)
+**Ce que je crée :**
+- `supabase/functions/send-push-notification/index.ts` — edge function qui prend un user_id + message, récupère ses endpoints, signe avec VAPID, envoie au serveur push
+- Intégration dans le flux existant : quand `outages` reçoit un INSERT pour une commune suivie, déclenche automatiquement la notif
 
 ---
 
-## D. Ordre d'exécution
+## Bloc 3 — Scraper SMGEAG (4 pages) + ML boosté
 
-1. Migration DB (pricing + push_subscriptions + scraper_runs + colonnes prefs)
-2. Refonte UI abonnements + matrice notif (Pro sans SMS, Business sur devis)
-3. Manifest + SW + composant PushOptIn + génération VAPID + intégration dans dispatch
-4. Refonte scraper SMGEAG 4 pages + cron + page admin santé
-5. Améliorations ML + re-génération initiale des forecasts
+**Sources scrapées toutes les 30 min via cron :**
+1. `https://www.smgeag.fr/les-actualites/` — annonces officielles
+2. `https://www.smgeag.fr/travaux-3/` — travaux planifiés
+3. `https://www.smgeag.fr/informations-reseau/` — infos réseau temps réel
+4. `https://www.smgeag.fr/` — bandeau d'urgence
 
-Tout dans la même passe. Ensuite on attend juste ton domaine OVH pour brancher l'envoi email réel (le push lui marche dès qu'on déploie en prod sur `aquagwada.fr`).
+**Ce que je crée :**
+- `supabase/functions/scrape-smgeag/index.ts` — scraper qui parse les 4 pages, extrait communes/dates/causes, INSERT dans `outages` (déduplique avec `external_id`)
+- `src/routes/api/public/hooks/scrape-smgeag.ts` — endpoint cron qui appelle le scraper
+- Cron job pg_cron toutes les 30 min
+- Health check : log dans `scraper_runs` (succès/erreur, nb d'éléments trouvés) → visible dans le dashboard admin
 
----
-
-## E. Étapes Facebook (pour plus tard, si tu veux retenter)
-
-Données en chat hors plan puisque tu m'as dit que tu repartais à zéro :
-
-1. Va sur [https://developers.facebook.com](https://developers.facebook.com) → "Get Started"
-2. Étape "About you" (ta capture) : choisis **"Autre"** (le plus neutre, évite "Développeur" qui demande parfois des infos pro)
-3. Termine l'inscription
-4. Crée une nouvelle app : type **"Business"**
-5. Dans l'app → Add Product → **"Pages API"**
-6. Dans "App Review" → Permissions → demander :
-  - `pages_read_engagement`
-  - `pages_manage_metadata`
-  - `pages_read_user_content`
-7. Génère un **Page Access Token longue durée** (60 jours, renouvelable) depuis Graph API Explorer
-8. Envoie-moi le token + Page ID de SMGEAG → je branche
-
-**Plan B sans Facebook** : tu m'envoies un export manuel des posts SMGEAG en CSV/texte une fois et je le digère pour seed l'historique. Mais avec les 4 pages SMGEAG scrappées, on a déjà 90% de la valeur.
+**ML boosté (`generate-forecasts`) — améliorations :**
+- **Pondération sources** : SMGEAG officiel = poids 1.0, Facebook SMGEAG = 0.8, signalements users = 0.4
+- **Détection de récurrence** : si une commune subit des coupures tous les mardis à 22h, l'algo le détecte et le prédit
+- **Saisonnalité** : weight × 1.3 en saison sèche (carême, février-mai), × 0.7 en saison humide
+- **Score de confiance affiché** : 0-100% pour chaque prévision, montré à l'utilisateur
 
 ---
 
-## F. Ce qui reste à faire après cette passe
+## Bloc 4 — Tarifs Pro/Business + page Abonnements
 
-- 🟡 Tu m'envoies le domaine OVH dès livré → je configure DNS + active emails Lovable avec `notifications@aquagwada.fr`
-- 🟡 Stripe : tu créais le compte → je branche le paiement Pro 5,99€ (Business reste sur devis manuel)
-- 🟡 Facebook : optionnel, plus tard
+Déjà fait en BDD (migration validée). Reste à mettre à jour l'UI :
+- `src/routes/abonnements.tsx` :
+  - **Pro 5,99€/mois** : push PWA illimité, email illimité, 5 communes, prévisions ML, historique 6 mois — **sans SMS**
+  - **Business à partir de 25€/mois** : tout Pro + SMS sur devis (selon volume), WhatsApp, communes illimitées, support prioritaire, API → bouton **"Demander un devis"** au lieu de Stripe
+- `src/lib/subscription.ts` — synchronisation des features avec la BDD
 
-Tu valides ce plan, je code tout d'un coup.
+---
+
+## Détails techniques
+
+| Fichier | Action |
+|---|---|
+| `public/manifest.webmanifest` | créer |
+| `public/sw.js` | créer (push handler + cache offline minimal) |
+| `public/icon-192.png`, `public/icon-512.png` | générer via ImageMagick |
+| `src/lib/push-notifications.ts` | créer |
+| `src/components/InstallPWAPrompt.tsx` | créer |
+| `src/components/EnablePushButton.tsx` | créer (à mettre dans Paramètres) |
+| `src/routes/__root.tsx` | éditer (injection manifest + register SW avec garde iframe) |
+| `src/routes/abonnements.tsx` | éditer (tarifs + bouton devis Business) |
+| `src/routes/parametres.tsx` | éditer (ajout toggle push notif) |
+| `src/lib/subscription.ts` | éditer (nouveaux features) |
+| `supabase/functions/send-push-notification/index.ts` | créer |
+| `supabase/functions/scrape-smgeag/index.ts` | créer |
+| `supabase/functions/generate-forecasts/index.ts` | éditer (sources + saisonnalité + récurrence) |
+| `src/routes/api/public/hooks/scrape-smgeag.ts` | créer (déclencheur cron) |
+| Cron pg_cron | configurer (toutes les 30 min) |
+
+**Dépendances npm à ajouter :** `web-push` (signature VAPID), `cheerio` (parsing HTML SMGEAG).
+
+**Garde-fou PWA preview Lovable** : le service worker ne s'enregistre PAS quand l'app tourne dans l'iframe Lovable — sinon ça casse le preview. Tu testeras les notifs sur le site publié (`aquagwada.fr` une fois livré, ou l'URL `.lovable.app` en attendant).
+
+---
+
+## Ce qu'il faut de TON côté après que j'aie codé
+
+1. **Tester l'install PWA** : ouvrir l'URL publiée sur ton tel → menu Safari/Chrome → "Ajouter à l'écran d'accueil"
+2. **Activer les notifs** dans Paramètres → autoriser quand le navigateur demande
+3. **Facebook** : suivre le guide que je t'ai donné (catégorie "Other" + permissions `pages_read_engagement`) — si bloqué, on bascule sur Plan B (RSS/export manuel)
+4. **Domaine `aquagwada.fr`** : dès que OVH te livre, tu me passes le nom et je te donne les 4 enregistrements DNS à coller (CNAME pour pointer vers Lovable + DKIM pour les emails)
+
+---
+
+**Tu valides, je code tout ?**

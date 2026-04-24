@@ -18,7 +18,43 @@ const FORECAST_DAYS = 14;
 const MIN_SAMPLE_FOR_PREDICTION = 4;
 const MIN_PROBABILITY_KEEP = 0.05;
 
-type HistRow = { commune_id: string; starts_at: string; duration_minutes: number };
+type HistRow = {
+  commune_id: string;
+  starts_at: string;
+  duration_minutes: number;
+  /** Poids de fiabilité de la source (1.0 = SMGEAG officiel, 0.8 = Facebook officiel, 0.4 = users) */
+  weight: number;
+};
+
+/** Saisonnalité Guadeloupe : carême (fév-mai) = sec, hivernage (juil-nov) = humide. */
+function seasonalMultiplier(date: Date): number {
+  const m = date.getMonth(); // 0-11
+  // Carême sec → +30% de risque
+  if (m >= 1 && m <= 4) return 1.3;
+  // Hivernage humide → -30% (mais grosses pluies = parfois travaux)
+  if (m >= 6 && m <= 10) return 0.85;
+  return 1.0;
+}
+
+/** Détecte un pattern récurrent : ex. "tous les mardis vers 22h". */
+function detectRecurrence(events: HistRow[]): { dow: number; hour: number; strength: number } | null {
+  if (events.length < 6) return null;
+  // bucket (dow, heure_2h) → count
+  const tally = new Map<string, number>();
+  for (const e of events) {
+    const d = new Date(e.starts_at);
+    const key = `${d.getDay()}_${Math.floor(d.getHours() / 2) * 2}`;
+    tally.set(key, (tally.get(key) ?? 0) + 1);
+  }
+  let best = { key: "", count: 0 };
+  for (const [k, c] of tally) if (c > best.count) best = { key: k, count: c };
+  // Force : ratio sur la moyenne des autres buckets
+  const avg = events.length / Math.max(1, tally.size);
+  const strength = best.count / avg;
+  if (strength < 2.5 || best.count < 3) return null; // pas assez net
+  const [dowStr, hourStr] = best.key.split("_");
+  return { dow: Number(dowStr), hour: Number(hourStr), strength };
+}
 
 function hourBucket(d: Date): number {
   return Math.floor(d.getHours() / 2) * 2;
@@ -71,24 +107,41 @@ export async function generateForecasts(): Promise<{ generated: number; communes
 
   const { data: history, error: hErr } = await supabaseAdmin
     .from("outage_history")
-    .select("commune_id, starts_at, duration_minutes")
+    .select("commune_id, starts_at, duration_minutes, source, reliability_score")
     .gte("starts_at", fromIso);
   if (hErr) throw hErr;
 
   const { data: resolvedOutages } = await supabaseAdmin
     .from("outages")
-    .select("commune_id, starts_at, ends_at")
+    .select("commune_id, starts_at, ends_at, source, reliability_score")
     .gte("starts_at", fromIso)
     .in("status", ["resolved", "cancelled"])
     .not("ends_at", "is", null);
 
+  // Pondération par source : official=1.0, facebook=0.8, user=0.4
+  function sourceWeight(src: string | null | undefined, rel: number | null | undefined): number {
+    const r = typeof rel === "number" ? rel : 0.5;
+    if (src === "official") return Math.max(0.9, r);
+    if (src === "facebook") return Math.max(0.7, r);
+    if (src === "user") return Math.min(0.5, Math.max(0.3, r));
+    return r;
+  }
+
   const allHist: HistRow[] = [
-    ...((history ?? []) as HistRow[]),
-    ...((resolvedOutages ?? []).map((r: any) => ({
-      commune_id: r.commune_id,
-      starts_at: r.starts_at,
-      duration_minutes: Math.max(1, Math.round((new Date(r.ends_at).getTime() - new Date(r.starts_at).getTime()) / 60000)),
+    ...((history ?? []).map((h: { commune_id: string; starts_at: string; duration_minutes: number; source: string | null; reliability_score: number | null }) => ({
+      commune_id: h.commune_id,
+      starts_at: h.starts_at,
+      duration_minutes: h.duration_minutes,
+      weight: sourceWeight(h.source, h.reliability_score),
     }))),
+    ...((resolvedOutages ?? [])
+      .filter((r): r is typeof r & { ends_at: string } => !!r.ends_at)
+      .map((r) => ({
+        commune_id: r.commune_id,
+        starts_at: r.starts_at,
+        duration_minutes: Math.max(1, Math.round((new Date(r.ends_at).getTime() - new Date(r.starts_at).getTime()) / 60000)),
+        weight: sourceWeight(r.source, r.reliability_score),
+      }))),
   ];
 
   // Tri par date asc pour le calcul de tendance
@@ -114,17 +167,23 @@ export async function generateForecasts(): Promise<{ generated: number; communes
 
     const buckets = events.map((e) => hourBucket(new Date(e.starts_at)));
     const mode = modeBucket(buckets);
-    const avgDuration = Math.round(events.reduce((s, e) => s + e.duration_minutes, 0) / events.length);
+    // Durée moyenne pondérée par fiabilité de source
+    const totalWeight = events.reduce((s, e) => s + e.weight, 0) || 1;
+    const avgDuration = Math.round(events.reduce((s, e) => s + e.duration_minutes * e.weight, 0) / totalWeight);
 
+    // Volume pondéré : signalements users comptent moins
+    const weightedVolume = events.reduce((s, e) => s + e.weight, 0);
     const uniqueDays = new Set(events.map((e) => e.starts_at.slice(0, 10))).size;
     const observedSpan = Math.min(HISTORY_DAYS_LONG, Math.max(30, (Date.now() - new Date(events[0].starts_at).getTime()) / 86400_000));
-    const baseProbability = Math.min(0.95, uniqueDays / observedSpan);
+    // Mélange : densité brute (jours uniques) × facteur volume pondéré
+    const baseProbability = Math.min(0.95, (uniqueDays / observedSpan) * Math.min(1.5, 0.6 + weightedVolume / Math.max(1, events.length)));
 
     if (baseProbability < MIN_PROBABILITY_KEEP) continue;
 
     const dowSignals = dayOfWeekSignals(events);
     const trend = computeTrend(events);
     trend_breakdown[trend]++;
+    const recurrence = detectRecurrence(events);
 
     // Confiance : log de l'échantillon + bonus fraîcheur (+0.05 si >=10 events sur 60j)
     const recentCount = events.filter((e) => new Date(e.starts_at).getTime() >= Date.now() - HISTORY_DAYS_RECENT * 86400_000).length;
@@ -137,8 +196,10 @@ export async function generateForecasts(): Promise<{ generated: number; communes
       const dow = date.getDay();
       const dowSignal = dowSignals[dow]; // 1.0 = neutre
 
-      // Probabilité combinée : base × jour de semaine, plafonnée
-      const adjusted = Math.min(0.95, baseProbability * Math.max(0.4, Math.min(2, dowSignal)));
+      const season = seasonalMultiplier(date);
+      const recurrenceBoost = recurrence && recurrence.dow === dow ? Math.min(1.8, 1 + recurrence.strength / 5) : 1;
+      // Probabilité combinée : base × jour-semaine × saison × récurrence
+      const adjusted = Math.min(0.95, baseProbability * Math.max(0.4, Math.min(2, dowSignal)) * season * recurrenceBoost);
       if (adjusted < MIN_PROBABILITY_KEEP) continue;
 
       const winStart = `${String(mode.hour).padStart(2, "0")}:00:00`;
@@ -146,10 +207,16 @@ export async function generateForecasts(): Promise<{ generated: number; communes
       const winEnd = `${String(winEndH).padStart(2, "0")}:00:00`;
 
       const dayBasis: string[] = [];
-      dayBasis.push(`${events.length} coupures historiques (${Math.round(observedSpan)}j observés)`);
+      dayBasis.push(`${events.length} événements historiques pondérés (${Math.round(observedSpan)}j observés)`);
       dayBasis.push(`Plage modale ${winStart}–${winEnd}`);
       if (Math.abs(dowSignal - 1) > 0.25) {
         dayBasis.push(`${date.toLocaleDateString("fr-FR", { weekday: "long" })}s ${dowSignal > 1 ? "à risque" : "plutôt calmes"} (${dowSignal.toFixed(2)}×)`);
+      }
+      if (season !== 1.0) {
+        dayBasis.push(season > 1 ? "saison sèche (carême) → risque accru" : "hivernage → risque modéré");
+      }
+      if (recurrence && recurrence.dow === dow) {
+        dayBasis.push(`pattern récurrent détecté (force ${recurrence.strength.toFixed(1)}×)`);
       }
       if (trend !== "stable") {
         dayBasis.push(trend === "improving" ? "tendance récente : en amélioration" : "tendance récente : en aggravation");

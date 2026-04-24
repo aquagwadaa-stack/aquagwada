@@ -1,7 +1,10 @@
+import { useEffect } from "react";
 import { Outlet, Link, createRootRoute, HeadContent, Scripts } from "@tanstack/react-router";
 
 import appCss from "../styles.css?url";
 import { AppProviders } from "@/providers/AppProviders";
+import { registerServiceWorker, isPreviewContext } from "@/lib/push-notifications";
+import { InstallPWAPrompt } from "@/components/InstallPWAPrompt";
 
 function NotFoundComponent() {
   return (
@@ -48,6 +51,8 @@ export const Route = createRootRoute({
       { rel: "preconnect", href: "https://fonts.gstatic.com", crossOrigin: "anonymous" },
       { rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" },
       { rel: "stylesheet", href: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" },
+      { rel: "manifest", href: "/manifest.webmanifest" },
+      { rel: "apple-touch-icon", href: "/icon-192.png" },
     ],
   }),
   shellComponent: RootShell,
@@ -70,9 +75,18 @@ function RootShell({ children }: { children: React.ReactNode }) {
 }
 
 function RootComponent() {
+  useEffect(() => {
+    if (isPreviewContext()) {
+      // Garde-fou : désinscrit tout SW résiduel dans l'iframe Lovable.
+      navigator.serviceWorker?.getRegistrations().then((regs) => regs.forEach((r) => r.unregister()));
+      return;
+    }
+    registerServiceWorker();
+  }, []);
   return (
     <AppProviders>
       <Outlet />
+      <InstallPWAPrompt />
     </AppProviders>
   );
 }
