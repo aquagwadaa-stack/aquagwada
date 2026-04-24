@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { AppShell } from "@/components/layout/AppShell";
 import { supabase } from "@/integrations/supabase/client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Lock, Sparkles } from "lucide-react";
+import { Check, Lock, Sparkles, Mail } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/providers/AuthProvider";
 import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
@@ -39,9 +39,10 @@ const FEATURE_MATRIX: Array<{ key: string; label: string; pick: (p: PlanRow) => 
   { key: "history", label: "Historique disponible", pick: (p) => `${p.history_days} jours` },
   { key: "forecasts", label: "Prévisions à 14 jours", pick: (p) => p.forecast_days > 0 },
   { key: "preventive", label: "Notifications préventives", pick: (p) => p.tier !== "free" },
+  { key: "push", label: "Notifications push (PWA)", pick: () => true },
   { key: "email", label: "Alertes par email", pick: () => true },
-  { key: "sms", label: "Alertes SMS", pick: (p) => p.sms_enabled },
-  { key: "whatsapp", label: "Alertes WhatsApp", pick: (p) => p.whatsapp_enabled },
+  { key: "sms", label: "Alertes SMS (sur devis)", pick: (p) => p.sms_enabled },
+  { key: "whatsapp", label: "Alertes WhatsApp (sur devis)", pick: (p) => p.whatsapp_enabled },
   { key: "api", label: "Accès API B2B", pick: (p) => p.api_access },
 ];
 
@@ -113,10 +114,15 @@ function PricingPage() {
               {i === 1 && <span className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-gradient-ocean px-3 py-1 text-xs font-medium text-primary-foreground">Le plus populaire</span>}
               <h3 className="font-display text-xl font-semibold">{p.name}</h3>
               <p className="mt-3 flex items-baseline gap-1">
-                <span className="font-display text-4xl font-bold">{Number(p.price_eur_monthly).toFixed(0)}€</span>
+                {p.tier === "business" && <span className="text-xs text-muted-foreground self-end mb-1.5">à partir de</span>}
+                <span className="font-display text-4xl font-bold">
+                  {p.tier === "pro" ? Number(p.price_eur_monthly).toFixed(2).replace(".", ",") : Number(p.price_eur_monthly).toFixed(0)}€
+                </span>
                 <span className="text-sm text-muted-foreground">/ mois</span>
               </p>
-              <p className="text-xs text-muted-foreground">ou {Number(p.price_eur_yearly).toFixed(0)}€/an</p>
+              <p className="text-xs text-muted-foreground">
+                {p.tier === "business" ? "Tarif selon volume SMS/WhatsApp — sur devis" : `ou ${Number(p.price_eur_yearly).toFixed(0)}€/an`}
+              </p>
               <ul className="mt-5 space-y-2 text-sm">
                 {(p.features as string[]).map((f) => (
                   <li key={f} className="flex items-start gap-2"><Check className="h-4 w-4 text-success mt-0.5 shrink-0" /><span>{f}</span></li>
@@ -137,9 +143,15 @@ function PricingPage() {
                     {busy ? "…" : "Démarrer mon essai 7 jours"}
                   </Button>
                 )
+              ) : p.tier === "business" ? (
+                <Button asChild className="mt-6 w-full gap-2" variant="outline">
+                  <a href="mailto:contact@aquagwada.fr?subject=Demande%20de%20devis%20Business%20AquaGwada&body=Bonjour%2C%0A%0AJe%20souhaite%20un%20devis%20Business%20pour%20%3A%0A-%20Nombre%20de%20communes%20%3A%0A-%20Volume%20SMS%2Fmois%20estim%C3%A9%20%3A%0A-%20WhatsApp%20%3A%20oui%2Fnon%0A-%20Acc%C3%A8s%20API%20%3A%20oui%2Fnon%0A%0AMerci%20%21">
+                    <Mail className="h-4 w-4" /> Demander un devis
+                  </a>
+                </Button>
               ) : (
                 <Button asChild className={`mt-6 w-full ${i === 1 ? "bg-gradient-ocean text-primary-foreground" : ""}`} variant={i === 1 ? "default" : "outline"}>
-                  <Link to="/connexion">{p.tier === "free" ? "Commencer" : "Nous contacter"}</Link>
+                  <Link to="/connexion">Commencer</Link>
                 </Button>
               )}
             </div>
@@ -184,7 +196,11 @@ function PricingPage() {
           </div>
         )}
 
-        <p className="mt-6 text-center text-xs text-muted-foreground">Le paiement Stripe sera activé prochainement. Aucun prélèvement pour l'instant.</p>
+        <div className="mt-8 rounded-xl border border-border bg-muted/30 p-4 text-center text-xs text-muted-foreground">
+          <p><strong>Pro :</strong> push PWA illimité, email illimité — pas de SMS (économie maximale, notifs aussi rapides).</p>
+          <p className="mt-1"><strong>Business :</strong> tarif sur devis selon ton volume SMS/WhatsApp et tes besoins API.</p>
+          <p className="mt-2 text-[11px]">Paiement Stripe activé prochainement pour le plan Pro. Aucun prélèvement pour l'instant.</p>
+        </div>
       </section>
     </AppShell>
   );
