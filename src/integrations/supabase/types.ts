@@ -245,7 +245,15 @@ export type Database = {
           starts_at?: string
           time_precision?: Database["public"]["Enums"]["time_precision"]
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "outage_history_commune_id_fkey"
+            columns: ["commune_id"]
+            isOneToOne: false
+            referencedRelation: "communes"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       outages: {
         Row: {
