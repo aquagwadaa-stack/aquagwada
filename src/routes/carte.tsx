@@ -312,8 +312,10 @@ function CartePage() {
                   key={d.toISOString()}
                   date={d}
                   outages={pastTimelineOutages.filter((o) => {
-                    const t = new Date(o.starts_at);
-                    return t.toDateString() === d.toDateString();
+                    const dayStart = new Date(d); dayStart.setHours(0, 0, 0, 0);
+                    const dayEnd = new Date(d); dayEnd.setHours(23, 59, 59, 999);
+                    return new Date(o.starts_at).getTime() <= dayEnd.getTime()
+                      && new Date(o.ends_at ?? o.starts_at).getTime() >= dayStart.getTime();
                   })}
                   communes={timelineCommunes}
                 />
