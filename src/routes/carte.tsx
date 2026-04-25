@@ -136,7 +136,7 @@ function CartePage() {
       futureRange.to,
       timelineCommuneIds.length > 0 ? timelineCommuneIds : undefined
     ),
-    enabled: showForecasts && timelineCommuneIds.length > 0,
+    enabled: showForecasts && (communes.isSuccess || timelineCommuneIds.length > 0),
     staleTime: 5 * 60_000,
   });
 
@@ -165,7 +165,7 @@ function CartePage() {
   });
 
   // Pour l'historique panel : si Business → toutes communes, sinon favs
-  const historyCommuneIds = tier === "business" ? allCommunes.map((c) => c.id) : favIds;
+  const historyCommuneIds = tier === "business" || !user ? allCommunes.map((c) => c.id) : favIds;
 
   return (
     <AppShell>
@@ -276,7 +276,9 @@ function CartePage() {
               </span>
             )}
           </div>
-          {timelineCommuneIds.length === 0 ? (
+          {communes.isLoading || favs.isLoading ? (
+            <div className="rounded-2xl border border-border p-8 text-center text-sm text-muted-foreground">Chargement des communes…</div>
+          ) : timelineCommuneIds.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
               {noFavs ? (
                 <>Choisissez votre commune favorite pour voir son historique.{" "}
@@ -315,6 +317,8 @@ function CartePage() {
           </div>
           {!showForecasts ? (
             <ForecastTeaserLocked />
+          ) : communes.isLoading || favs.isLoading ? (
+            <div className="rounded-2xl border border-border p-8 text-center text-sm text-muted-foreground">Chargement des communes…</div>
           ) : timelineCommuneIds.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
               {noFavs ? (
