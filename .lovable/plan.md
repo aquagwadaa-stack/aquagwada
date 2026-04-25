@@ -1,51 +1,130 @@
-Je comprends : les captures montrent que le résultat ne correspond pas à ce qui avait été annoncé. Je vais corriger précisément les points visibles au lieu de repartir dans une grosse refonte.
+## Objectif
 
-Ce que j’ai constaté dans le code et la base :
+Reconstruire une **seule frise chronologique** ("Coupures au fil du temps") qui remplace, sur les pages **Accueil, Carte et Ma commune**, les blocs actuels : "Aujourd'hui", "Demain et après ?", "7 derniers jours", "14 prochains jours", anciennes Timelines.
 
-- La base contient bien environ 940 entrées d’historique et 61 prévisions, donc le problème est surtout UI/filtrage, pas absence de données.
-- Les règles de lecture sont ouvertes pour `outage_history` et `forecasts`, donc ce n’est pas un blocage de permissions.
-- Le panneau `HistoryPanel` est encore trop limité : il ne charge que 20 lignes et son état vide peut donner l’impression que rien n’existe.
-- Sur `/carte`, en visiteur ou business, la timeline affiche encore une ligne par commune de Guadeloupe, ce qui crée la “liste infinie”.
-- Sur `/ma-commune`, le label Pro peut encore venir d’anciennes données de plan côté base/abonnements, d’où le “1 an” vu dans les captures.
-- Les captures contiennent des textes qui ne sont plus dans certains fichiers, donc il y a probablement aussi un souci de build/preview pas totalement à jour ; je vérifierai par typecheck et cohérence des chaînes de texte.
+L'historique détaillé reste un bloc indépendant (grisé pour Free, limité 1 an Pro).
 
-Plan d’action immédiat :
+Ajouter aussi : restriction d'accès pour visiteurs non connectés + retouches de copie sur l'accueil.
 
-1. Supprimer la “liste infinie” des timelines
+---
 
-- Sur `/carte`, ne plus afficher une ligne pour toutes les communes par défaut.
-- Remplacer la timeline multi-lignes globale par une vue compacte : uniquement les communes qui ont une coupure/prévision le jour sélectionné.
-- Si aucune donnée ce jour-là : afficher un vrai état vide clair.
-- Garder `/ma-commune` en multi-lignes seulement pour les communes favorites, car là c’est pertinent.
+## 1. Nouveau composant `OutageTimeline` (remplace tout)
 
-2. Rendre l’historique réellement exploitable
+Un composant unique réutilisé partout, structuré ainsi :
 
-- Modifier `HistoryPanel` pour afficher une liste paginée/chargeable, pas seulement les 20 premières lignes.
-- Ajouter un résumé fiable : total, communes touchées, période réellement couverte.
-- Corriger les messages vides pour distinguer : aucune favorite, filtre trop restrictif, ou aucune coupure dans la période.
-- Uniformiser les labels : Gratuit = 7 jours, Pro = 1 an, Business = 3 ans.
+```text
+┌─ Coupures au fil du temps ─────────────────┐
+│  ◀  [mer 23] [jeu 24] [VEN 25 ✓] ...  ▶   │   ← ruban de jours, 3 visibles
+├────────────────────────────────────────────┤
+│  Vendredi 25 avril                         │
+│  00h   06h   12h   18h   24h               │
+│  Baillif       ▓▓▓                         │
+│  Le Moule         ▓▓▓▓        ░░░░ (prév)  │
+│  ...                                       │
+└────────────────────────────────────────────┘
+```
 
-3. Corriger les labels incohérents “1 an d’historique”
+### Ruban de jours (DayRibbon)
 
-- Remplacer les textes restants qui affichent 6 mois pour Pro par 1 an, et 5 ans pour Business par 3 ans.
-- Vérifier `abonnements` et les composants qui formatent les durées afin qu’ils utilisent la même vérité que `PLAN_CAPS`.
+- Affiche **3 cases visibles** par défaut (responsive : 5 sur desktop large).
+- Aujourd'hui sélectionné par défaut, **positionné en 4ème case "logique"** dans la liste totale (3 jours passés visibles à sa gauche au démarrage si possible, sinon scroll).
+- Flèches `◀` / `▶` cliquables pour faire défiler la liste case par case.
+- Liste totale = `backDays` (passés) + 1 (aujourd'hui) + `forwardDays` (futurs).
+- Cases **futures grisées avec petit badge "Pro"** si `tier === "free"` → clic = redirection vers `/abonnements` au lieu de sélection.
+- Cases passées au-delà de la fenêtre du plan également grisées "Pro".
+- Le clic sur une case ouvre **la chronologie de ce jour en dessous** (multi-lignes par commune favorite, exhaustif).
 
-4. Stabiliser les prévisions dans l’UI
+### Vue du jour sélectionné
 
-- Afficher les prévisions uniquement sur les jours futurs, avec un libellé lisible : officiel vs statistique, risque faible/modéré/élevé.
-- Éviter d’afficher des prévisions statistiques comme si elles étaient certaines.
-- Garder les plannings officiels avec une confiance élevée.
+- Réutilise la logique multi-lanes existante de `DayTimeline` (mode `communes={...}`).
+- Pour chaque commune favorite (ou "quelques villes au pif" pour visiteurs) : une ligne avec coupures + prévisions selon la nature du jour :
+  - **Jour passé** → données de `outage_history`
+  - **Aujourd'hui** → `outages` (live)
+  - **Jour futur** → `forecasts`
+- Bloc "verrou après maintenant" sur l'aujourd'hui pour Free : on autorise jusqu'à 1 heure aprés "maintenant" la journée d'aujourd'hui. Le verrou s'applique aussi aux **jours futurs** via les cases grisées du ruban.
 
-5. Vérification finale obligatoire
+### Fenêtres par plan
 
-- Lancer le contrôle TypeScript.
-- Vérifier par requête DB : volume historique, prévisions sur 14 jours, dates min/max.
-- Vérifier dans le code qu’il ne reste plus les anciens libellés visibles dans tes captures.
-- Vérifier les deux écrans clés : `/carte` et `/ma-commune`, en mode visiteur et connecté/non-visiteur.
 
-Résultat attendu :
+| Plan                    | Jours passés cliquables                         | Jours futurs cliquables                                                            |
+| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
+| Visiteur (non connecté) | aujourd'hui + 1 ou 2 jours autour, sans cliquer | uniquement aujourd'hui en aperçu avec les previsions de plus d'une heure vérouillé |
+| Free connecté           | 7                                               | 0 (cases futures grisées "Pro")                                                    |
+| Pro / Essai             | 365                                             | 14                                                                                 |
+| Business                | 1095                                            | 14                                                                                 |
 
-- Plus de grande liste verticale de communes inutiles.
-- L’historique affiche enfin des données quand il y en a, avec pagination/chargement.
-- Les prévisions sont visibles et compréhensibles pour les plans autorisés.
-- Les labels d’offre sont cohérents partout.
+
+---
+
+## 2. Suppression / fusion sur chaque page
+
+### Accueil (`src/routes/index.tsx`)
+
+- **Supprimer** :
+  - Section "Aujourd'hui en Guadeloupe" (DayTimeline dédiée)
+  - Section "Demain et après ?" (ForecastTeaserLocked / ForecastsUnlockedPreview)
+- **Remplacer par** un unique bloc `<OutageTimeline />` titré "Coupures au fil du temps".
+- Pour visiteur non connecté : la timeline affiche **3 communes au hasard avec comme statut l'eau coupée**  (sélection stable dans le temps via `useMemo` + sample dans `communes`), aucun jour passé / futur cliquable, et un **gros CTA conversion** au-dessus/dessous : "Créez un compte gratuit pour suivre votre commune et voir les 7 derniers jours".
+- Modifier le sous-titre HERO : retirer "timeline horaire" → "carte, frise chronologique, prévisions à 14 jours, et notifications préventives ou alertes par email" (suppression "SMS et WhatsApp" car réservés Business via devis et ajouté notifications préventives).
+
+### Carte (`src/routes/carte.tsx`)
+
+- **Supprimer** :
+  - Section "Timeline (historique)/(prévisions)/(aujourd'hui)" + DayPicker actuel
+- **Remplacer par** `<OutageTimeline />` (en mode favoris pour Free/Pro, toutes communes pour Business).
+- Conserver : carte, sidebar "En cours", `ReportBlock`.
+- Conserver `<HistoryPanel />` indépendant (grisé Free, 1 an Pro, 3 ans Business).
+
+### Ma commune (`src/routes/ma-commune.tsx`)
+
+- **Supprimer** : section "Timeline" actuelle (DayPicker + DayTimeline).
+- **Remplacer par** `<OutageTimeline />` (toujours en mode favoris).
+- Conserver : picker de communes favorites, status cards, `ReportBlock`, `NotificationPreferencesPanel`, `HistoryPanel`, `UpsellCard`.
+
+---
+
+## 3. Restriction visiteur (non connecté)
+
+Pages **Carte** et **Ma commune** :
+
+- Si `!user`, afficher un écran "Connectez-vous" plein écran (déjà fait pour `/ma-commune`, à reproduire pour `/carte`) avec :
+  - Titre, courte explication
+  - Boutons "Créer un compte gratuit" et "Se connecter"
+  - Mention "Inscription instantanée, plan gratuit automatique".
+- Vérifier que `signUp` du `AuthProvider` assigne bien le plan `free` par défaut (sinon ajouter un trigger DB ou un insert côté client après signup).
+
+L'**Accueil reste publique** mais tronquée comme décrit en §2.
+
+---
+
+## 4. Bloc Historique (inchangé dans son principe)
+
+- Garder `<HistoryPanel />` séparé sur Carte et Ma commune.
+- S'assurer du grisage pour Free (badge Lock + CTA `/abonnements`) — déjà fait, à vérifier.
+
+---
+
+## 5. Détails techniques (résumé)
+
+**Nouveau fichier** : `src/components/outages/OutageTimeline.tsx`
+
+- Props : `tier`, `mode: "visitor" | "favorites" | "all"`, `favoriteCommunes`, `allCommunes`, `visibleDays?: number` (par défaut 3, responsive).
+- Gère seul : ruban scrollable, état du jour sélectionné, fetch combiné (history/outages/forecasts) selon le jour, rendu via `DayTimeline` existant en mode multi-lignes.
+- Cas vide visiteur : 3 communes échantillonnées + overlay CTA "Créez un compte".
+
+**Refactor** : extraire `DayPicker` actuel pour évoluer vers ruban à fenêtre glissante avec flèches (ou nouveau `DayRibbon`, garder l'ancien si encore utilisé ailleurs).
+
+**Pages modifiées** : `index.tsx`, `carte.tsx`, `ma-commune.tsx` — retraits + import du nouveau composant.
+
+`**SiteHeader**` : optionnel, masquer "Carte" / "Ma commune" pour visiteurs ou laisser et rediriger vers `/connexion` (préférence : laisser visible, redirection sur la page).
+
+**Validation** : `tsc --noEmit` après refactor.
+
+---
+
+## Ce qui n'est PAS touché
+
+- Le moteur de prévisions (`generate_forecasts.ts`)
+- Le schéma DB
+- Les jobs de scraping
+- Les notifications, abonnements, paiements
