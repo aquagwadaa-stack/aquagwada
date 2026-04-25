@@ -18,6 +18,7 @@ import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscri
 import { NotificationPreferencesPanel } from "@/components/notifications/NotificationPreferencesPanel";
 import { ReportBlock } from "@/components/reports/ReportBlock";
 import { HistoryPanel } from "@/components/history/HistoryPanel";
+import { useEffectiveTier } from "@/hooks/use-admin";
 
 export const Route = createFileRoute("/ma-commune")({
   component: MaCommunePage,
@@ -52,12 +53,13 @@ function Authed() {
   const { user } = useAuth();
   const qc = useQueryClient();
   const communes = useQuery({ queryKey: ["communes"], queryFn: fetchCommunes });
+  const effectiveTier = useEffectiveTier();
 
   const subscription = useQuery({
     queryKey: ["subscription", user!.id],
     queryFn: () => fetchEffectiveSubscription(user!.id),
   });
-  const tier: Tier = (subscription.data?.tier as Tier) ?? "free";
+  const tier: Tier = effectiveTier.tier;
   const trialActive = !!subscription.data?.trialActive;
   const trialExpired = !!subscription.data?.trialExpired;
   const trialEndsAt = subscription.data?.trialEndsAt ?? null;
