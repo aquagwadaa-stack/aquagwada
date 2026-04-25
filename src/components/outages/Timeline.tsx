@@ -28,6 +28,19 @@ function TrendBadge({ trend }: { trend: Forecast["trend"] }) {
   );
 }
 
+function outageEndForTimeline(o: Outage, endOfDay: Date): Date {
+  if (o.ends_at) return new Date(o.ends_at);
+  const start = new Date(o.starts_at).getTime();
+  const startOfDay = new Date(endOfDay); startOfDay.setHours(0, 0, 0, 0);
+  if (o.status === "ongoing" && start < startOfDay.getTime()) return endOfDay;
+  const estimatedMinutes = o.estimated_duration_minutes ?? 180;
+  return new Date(Math.min(endOfDay.getTime(), start + estimatedMinutes * 60_000));
+}
+
+function outageEndLabel(o: Outage, end: Date): string {
+  return o.ends_at ? formatHM(o.ends_at) : `~${formatHM(end)}`;
+}
+
 /** Affiche les coupures d'une journée sous forme de timeline horaire. */
 export function DayTimeline({
   date,
@@ -159,9 +172,8 @@ export function DayTimeline({
           {/* Mode classique : on rend toutes les coupures empilées */}
           {!multiMode && outages.map((o) => {
             const s = new Date(o.starts_at).getTime();
-            const e = o.ends_at
-              ? new Date(o.ends_at).getTime()
-              : Math.min(endOfDay.getTime(), s + (o.estimated_duration_minutes ?? 120) * 60_000);
+            const end = outageEndForTimeline(o, endOfDay);
+            const e = end.getTime();
             const left = Math.max(0, ((s - startOfDay.getTime()) / dayMs) * 100);
             const widthPct = Math.max(2, ((e - Math.max(s, startOfDay.getTime())) / dayMs) * 100);
             const tone =
@@ -174,7 +186,7 @@ export function DayTimeline({
                 <div className={`absolute top-0 h-full rounded-md border ${tone} p-1.5 overflow-hidden`} style={{ left: `${left}%`, width: `${Math.min(100 - left, widthPct)}%` }}>
                   <div className="flex items-center gap-2 text-[11px] font-medium truncate">
                     <Clock className="h-3 w-3 shrink-0" />
-                    <span>{formatHM(o.starts_at)}{o.ends_at ? `–${formatHM(o.ends_at)}` : " · fin inconnue"}</span>
+                    <span>{formatHM(o.starts_at)}–{outageEndLabel(o, end)}</span>
                     {o.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {o.commune.name}</span>}
                   </div>
                   <div className="text-[10px] text-muted-foreground truncate">
@@ -236,9 +248,8 @@ export function DayTimeline({
                 )}
                 {cOutages.map((o) => {
                   const s = new Date(o.starts_at).getTime();
-                  const e = o.ends_at
-                    ? new Date(o.ends_at).getTime()
-                    : Math.min(endOfDay.getTime(), s + (o.estimated_duration_minutes ?? 120) * 60_000);
+                  const end = outageEndForTimeline(o, endOfDay);
+                  const e = end.getTime();
                   const left = Math.max(0, ((s - startOfDay.getTime()) / dayMs) * 100);
                   const widthPct = Math.max(1.5, ((e - Math.max(s, startOfDay.getTime())) / dayMs) * 100);
                   const tone =
@@ -251,10 +262,10 @@ export function DayTimeline({
                       key={o.id}
                       className={`absolute top-1 bottom-1 rounded border ${tone} px-1 overflow-hidden flex items-center`}
                       style={{ left: `${left}%`, width: `${Math.min(100 - left, widthPct)}%` }}
-                      title={`${formatHM(o.starts_at)}${o.ends_at ? `–${formatHM(o.ends_at)}` : ""} · ${o.sector || o.cause || "Coupure"}`}
+                       title={`${formatHM(o.starts_at)}–${outageEndLabel(o, end)} · ${o.sector || o.cause || "Coupure"}`}
                     >
                       <span className="text-[10px] font-medium truncate">
-                        {formatHM(o.starts_at)}{o.ends_at ? `–${formatHM(o.ends_at)}` : ""}
+                         {formatHM(o.starts_at)}–{outageEndLabel(o, end)}
                       </span>
                     </div>
                   );

@@ -37,7 +37,10 @@ export function CurrentStatusCard({
   }
 
   const ongoing = outage.status === "ongoing";
-  const minutes = durationBetween(outage.starts_at, outage.ends_at) ?? outage.estimated_duration_minutes;
+  const fallbackMinutes = outage.estimated_duration_minutes ?? 180;
+  const estimatedEnd = new Date(new Date(outage.starts_at).getTime() + fallbackMinutes * 60_000).toISOString();
+  const endLabel = outage.ends_at ? formatHM(outage.ends_at) : `~${formatHM(estimatedEnd)}`;
+  const minutes = durationBetween(outage.starts_at, outage.ends_at) ?? fallbackMinutes;
 
   return (
     <div className={`rounded-2xl border p-6 shadow-soft ${ongoing ? "border-destructive/30 bg-destructive/5" : "border-warning/40 bg-warning/10"}`}>
@@ -52,7 +55,7 @@ export function CurrentStatusCard({
           </h3>
           <div className="mt-2 grid sm:grid-cols-3 gap-3 text-sm">
             <Stat label="Début" value={formatHM(outage.starts_at)} />
-            <Stat label={ongoing ? "Retour estimé" : "Fin prévue"} value={outage.ends_at ? formatHM(outage.ends_at) : "Inconnu"} accent={!outage.ends_at} />
+            <Stat label={ongoing ? "Retour estimé" : "Fin prévue"} value={endLabel} accent={!outage.ends_at} />
             <Stat label="Durée" value={formatDuration(minutes)} />
           </div>
           {outage.cause && <p className="mt-3 text-sm text-muted-foreground">{outage.cause}</p>}
