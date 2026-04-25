@@ -117,6 +117,7 @@ function Authed() {
     if (error) return toast.error(error.message);
     setPickerCommune("");
     qc.invalidateQueries({ queryKey: ["favs"] });
+    qc.invalidateQueries({ queryKey: ["favs", user!.id] });
     toast.success("Commune ajoutée à vos favoris");
   }
 
@@ -124,6 +125,7 @@ function Authed() {
     const { error } = await supabase.from("user_communes").delete().eq("id", id);
     if (error) return toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["favs"] });
+    qc.invalidateQueries({ queryKey: ["favs", user!.id] });
   }
 
   const available = (communes.data ?? []).filter((c) => !favIds.includes(c.id));
