@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 export type Forecast = {
   id: string;
   commune_id: string;
+  kind: "official_schedule" | "statistical_forecast";
   forecast_date: string; // YYYY-MM-DD
   window_start: string | null; // HH:MM:SS
   window_end: string | null;
@@ -16,7 +17,7 @@ export type Forecast = {
   commune?: { name: string; slug: string } | null;
 };
 
-/** Récupère les prévisions sur une fenêtre de dates, pour des communes optionnelles. */
+/** RÃ©cupÃ¨re les prÃ©visions sur une fenÃªtre de dates, pour des communes optionnelles. */
 export async function fetchForecastsRange(
   fromDate: string, // YYYY-MM-DD
   toDate: string,
