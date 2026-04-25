@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/providers/AuthProvider";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tier } from "@/lib/subscription";
+import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
 
 const SIM_TIER_KEY = "aquagwada.admin.sim_tier";
 
@@ -56,4 +57,37 @@ export function useIsAdmin(): { isAdmin: boolean; loading: boolean } {
     },
   });
   return { isAdmin: !!q.data, loading: authLoading || q.isLoading };
+}
+
+/**
+ * Tier effectif visible dans l'UI :
+ *   - si admin + simulation active → tier simulé
+ *   - sinon → tier réel issu de la souscription
+ * Renvoie aussi un booléen `simulating` pour afficher un bandeau.
+ */
+export function useEffectiveTier(): {
+  tier: Tier;
+  realTier: Tier;
+  simulating: boolean;
+  loading: boolean;
+} {
+  const { user, loading: authLoading } = useAuth();
+  const { isAdmin } = useIsAdmin();
+  const sim = useSimulatedTier();
+  const sub = useQuery({
+    queryKey: ["subscription", user?.id ?? "anon"],
+    queryFn: () => fetchEffectiveSubscription(user!.id),
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+  const realTier: Tier = (sub.data?.tier as Tier) ?? "free";
+  // Pour les admins on force le tier "business" par défaut s'il n'y a pas de simulation explicite
+  const adminDefault: Tier = "business";
+  const simulating = isAdmin && sim !== null;
+  const tier: Tier = simulating
+    ? sim!
+    : isAdmin
+      ? adminDefault
+      : realTier;
+  return { tier, realTier, simulating, loading: authLoading || sub.isLoading };
 }
