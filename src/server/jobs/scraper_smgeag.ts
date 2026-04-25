@@ -255,6 +255,8 @@ export async function scrapeSmgeag(): Promise<{ ok: boolean; sources: number; fo
         if (existing) {
           await supabaseAdmin.from("outages").update({
             description: row.description,
+            ends_at: row.ends_at,
+            estimated_duration_minutes: row.estimated_duration_minutes,
             confidence_score: row.confidence_score,
             updated_at: new Date().toISOString(),
           }).eq("id", existing.id);
