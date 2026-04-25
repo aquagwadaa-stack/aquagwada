@@ -67,6 +67,20 @@ function extractHour(text: string): { h: number; m: number } | null {
   return { h, m: min };
 }
 
+function extractTimeWindow(text: string): { start: { h: number; m: number } | null; end: { h: number; m: number } | null; duration: number | null } {
+  const m = text.match(/(?:de|à partir de|a partir de)?\s*(\d{1,2})\s*[h:]\s*(\d{2})?\s*(?:à|a|au|jusqu(?:'|’)à|-)\s*(\d{1,2})\s*[h:]\s*(\d{2})?/i);
+  if (!m) {
+    const start = extractHour(text);
+    return { start, end: null, duration: null };
+  }
+  const start = { h: Number(m[1]), m: m[2] ? Number(m[2]) : 0 };
+  const end = { h: Number(m[3]), m: m[4] ? Number(m[4]) : 0 };
+  if (start.h > 23 || start.m > 59 || end.h > 23 || end.m > 59) return { start: extractHour(text), end: null, duration: null };
+  let duration = (end.h * 60 + end.m) - (start.h * 60 + start.m);
+  if (duration <= 0) duration += 24 * 60;
+  return { start, end, duration };
+}
+
 type CommuneRow = { id: string; name: string; slug: string };
 type ScrapedItem = {
   source: string;
@@ -127,14 +141,21 @@ function parseHtml(html: string, sourceUrl: string, sourceKey: string, communes:
     if (matchedCommunes.length === 0) continue;
 
     const date = extractDate(text, now);
-    const hour = extractHour(text);
+    const window = extractTimeWindow(text);
+    const hour = window.start;
     let starts_at: Date;
+    let ends_at: Date | null = null;
     let time_known = false;
     if (date) {
       starts_at = new Date(date);
       if (hour) { starts_at.setHours(hour.h, hour.m, 0, 0); time_known = true; }
     } else {
       starts_at = new Date(now);
+    }
+    if (window.end) {
+      ends_at = new Date(starts_at);
+      ends_at.setHours(window.end.h, window.end.m, 0, 0);
+      if (ends_at.getTime() <= starts_at.getTime()) ends_at.setDate(ends_at.getDate() + 1);
     }
 
     // Cause heuristique
@@ -156,7 +177,7 @@ function parseHtml(html: string, sourceUrl: string, sourceKey: string, communes:
       external_id: externalId,
       commune_ids: matchedCommunes,
       starts_at: starts_at.toISOString(),
-      ends_at: null,
+      ends_at: ends_at?.toISOString() ?? null,
       description: desc,
       cause,
       reliability_score: 0.95, // SMGEAG officiel
@@ -211,6 +232,9 @@ export async function scrapeSmgeag(): Promise<{ ok: boolean; sources: number; fo
           external_id: externalId,
           starts_at: item.starts_at,
           ends_at: item.ends_at,
+          estimated_duration_minutes: item.ends_at
+            ? Math.max(1, Math.round((new Date(item.ends_at).getTime() - new Date(item.starts_at).getTime()) / 60000))
+            : 180,
           description: item.description,
           cause: item.cause,
           reliability_score: item.reliability_score,
