@@ -27,6 +27,7 @@ import { Route as ApiPublicJobsGenerateForecastsRouteImport } from './routes/api
 import { Route as ApiPublicJobsDispatchNotificationsRouteImport } from './routes/api.public.jobs.dispatch-notifications'
 import { Route as ApiPublicJobsCleanupHistoryRouteImport } from './routes/api.public.jobs.cleanup-history'
 import { Route as ApiPublicJobsCheckPreventiveRouteImport } from './routes/api.public.jobs.check-preventive'
+import { Route as ApiPublicJobsBackfillPlanningRouteImport } from './routes/api.public.jobs.backfill-planning'
 
 const MaCommuneRoute = MaCommuneRouteImport.update({
   id: '/ma-commune',
@@ -126,6 +127,12 @@ const ApiPublicJobsCheckPreventiveRoute =
     path: '/api/public/jobs/check-preventive',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicJobsBackfillPlanningRoute =
+  ApiPublicJobsBackfillPlanningRouteImport.update({
+    id: '/api/public/jobs/backfill-planning',
+    path: '/api/public/jobs/backfill-planning',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -137,6 +144,7 @@ export interface FileRoutesByFullPath {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
   '/api/public/jobs/dispatch-notifications': typeof ApiPublicJobsDispatchNotificationsRoute
@@ -157,6 +165,7 @@ export interface FileRoutesByTo {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
   '/api/public/jobs/dispatch-notifications': typeof ApiPublicJobsDispatchNotificationsRoute
@@ -178,6 +187,7 @@ export interface FileRoutesById {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
   '/api/public/jobs/dispatch-notifications': typeof ApiPublicJobsDispatchNotificationsRoute
@@ -200,6 +210,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
     | '/api/public/jobs/dispatch-notifications'
@@ -220,6 +231,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
     | '/api/public/jobs/dispatch-notifications'
@@ -240,6 +252,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
     | '/api/public/jobs/dispatch-notifications'
@@ -261,6 +274,7 @@ export interface RootRouteChildren {
   ConfidentialiteRoute: typeof ConfidentialiteRoute
   ConnexionRoute: typeof ConnexionRoute
   MaCommuneRoute: typeof MaCommuneRoute
+  ApiPublicJobsBackfillPlanningRoute: typeof ApiPublicJobsBackfillPlanningRoute
   ApiPublicJobsCheckPreventiveRoute: typeof ApiPublicJobsCheckPreventiveRoute
   ApiPublicJobsCleanupHistoryRoute: typeof ApiPublicJobsCleanupHistoryRoute
   ApiPublicJobsDispatchNotificationsRoute: typeof ApiPublicJobsDispatchNotificationsRoute
@@ -400,6 +414,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicJobsCheckPreventiveRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/backfill-planning': {
+      id: '/api/public/jobs/backfill-planning'
+      path: '/api/public/jobs/backfill-planning'
+      fullPath: '/api/public/jobs/backfill-planning'
+      preLoaderRoute: typeof ApiPublicJobsBackfillPlanningRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -413,6 +434,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfidentialiteRoute: ConfidentialiteRoute,
   ConnexionRoute: ConnexionRoute,
   MaCommuneRoute: MaCommuneRoute,
+  ApiPublicJobsBackfillPlanningRoute: ApiPublicJobsBackfillPlanningRoute,
   ApiPublicJobsCheckPreventiveRoute: ApiPublicJobsCheckPreventiveRoute,
   ApiPublicJobsCleanupHistoryRoute: ApiPublicJobsCleanupHistoryRoute,
   ApiPublicJobsDispatchNotificationsRoute:
@@ -427,3 +449,12 @@ const rootRouteChildren: RootRouteChildren = {
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
