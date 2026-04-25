@@ -315,29 +315,44 @@ export function DayTimeline({
           })()}
 
           {/* Forecasts (jaune, dashed) — mode classique */}
-          {!multiMode && dailyForecasts.map((f) => {
-            const segment = forecastWindowForTimeline(f, startOfDay, endOfDay);
-            if (!segment) return null;
-            const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
+          {!multiMode && dailyForecasts.length > 0 && (() => {
+            const items = dailyForecasts.map((f) => {
+              const seg = forecastWindowForTimeline(f, startOfDay, endOfDay);
+              if (!seg) return null;
+              const startMs = startOfDay.getTime() + (seg.left / 100) * dayMs;
+              const endMs = startMs + (seg.width / 100) * dayMs;
+              return { key: `f-${f.id}`, startMs, endMs, f, seg };
+            }).filter((x): x is NonNullable<typeof x> => x !== null);
+            const { laneOf, laneCount } = computeLanes(items);
+            const laneHeight = 48;
+            const totalHeight = Math.max(laneHeight, laneCount * laneHeight + (laneCount - 1) * 6);
             return (
-              <div key={f.id} className="relative h-12">
-                <div
-                  className={`absolute top-0 h-full rounded-md border-2 border-dashed ${intensity} p-1.5 overflow-hidden`}
-                  style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
-                  title={f.basis ?? "Prévision"}
-                >
-                  <div className="flex items-center gap-2 text-[11px] font-medium truncate">
-                    <Sparkles className="h-3 w-3 shrink-0" />
-                    <span>{f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)} · {Math.round(f.probability * 100)}%</span>
-                    {f.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {f.commune.name}</span>}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground truncate">
-                    Prévision (confiance {Math.round(f.confidence * 100)}%)
-                  </div>
-                </div>
+              <div className="relative" style={{ height: totalHeight }}>
+                {items.map(({ key, f, seg }) => {
+                  const lane = laneOf.get(key) ?? 0;
+                  const top = lane * (laneHeight + 6);
+                  const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
+                  return (
+                    <div
+                      key={key}
+                      className={`absolute rounded-md border-2 border-dashed ${intensity} p-1.5 overflow-hidden`}
+                      style={{ left: `${seg.left}%`, width: `${seg.width}%`, top, height: laneHeight }}
+                      title={f.basis ?? "Prévision"}
+                    >
+                      <div className="flex items-center gap-2 text-[11px] font-medium truncate">
+                        <Sparkles className="h-3 w-3 shrink-0" />
+                        <span>{f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)} · {Math.round(f.probability * 100)}%</span>
+                        {f.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {f.commune.name}</span>}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        Prévision (confiance {Math.round(f.confidence * 100)}%)
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
-          })}
+          })()}
 
           {/* Mode multi-communes : une ligne par commune favorite */}
           {multiMode && communes!.map((c) => {
