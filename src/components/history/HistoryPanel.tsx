@@ -16,19 +16,19 @@ import { formatDuration } from "@/lib/format";
 export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: string[] }) {
   const caps = PLAN_CAPS[tier];
   const days = caps.historyDays;
-  const PAGE_SIZE = 25;
-  const [page, setPage] = useState(1);
+  const STEP = 25;
+  const [limit, setLimit] = useState(STEP);
 
   const q = useQuery({
-    queryKey: ["history", tier, communeIds.join(","), days, page],
-    queryFn: () => fetchHistory({ communeIds, daysBack: days, page, pageSize: PAGE_SIZE }),
+    queryKey: ["history", tier, communeIds.join(","), days, limit],
+    queryFn: () => fetchHistory({ communeIds, daysBack: days, page: 1, pageSize: limit }),
     enabled: communeIds.length > 0,
     staleTime: 5 * 60_000,
   });
 
   const rows: HistoryEntry[] = q.data?.rows ?? [];
   const total = q.data?.total ?? 0;
-  const hasMore = page * PAGE_SIZE < total;
+  const hasMore = rows.length < total;
 
   const labelDuree =
     tier === "free" ? "7 derniers jours"
@@ -91,10 +91,14 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
         <p className="text-sm text-muted-foreground">Chargement…</p>
       ) : rows.length === 0 ? (
         <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-3 py-4 space-y-1">
-          <p>Aucune coupure archivée sur cette période pour vos communes 💧</p>
+          <p>
+            {communeIds.length > 0
+              ? "Aucune coupure archivée sur cette période pour vos communes 💧"
+              : "Aucune coupure archivée sur cette période 💧"}
+          </p>
           {tier === "free" && (
             <p className="text-xs">
-              <Link to="/abonnements" className="text-primary underline">Passez à Pro</Link> pour étendre la fenêtre à 6 mois et voir un historique plus complet.
+              <Link to="/abonnements" className="text-primary underline">Passez à Pro</Link> pour étendre la fenêtre à 1 an et voir un historique plus complet.
             </p>
           )}
         </div>
@@ -124,10 +128,20 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
         </ul>
       )}
 
-      {total > rows.length && (
-        <p className="text-[11px] text-muted-foreground text-center">
-          {rows.length} affichées sur {total} archivées.
-        </p>
+      {total > 0 && (
+        <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground pt-1">
+          <span>{rows.length} affichées sur {total} archivées.</span>
+          {hasMore && (
+            <button
+              type="button"
+              onClick={() => setLimit((l) => Math.min(l + STEP, total))}
+              disabled={q.isFetching}
+              className="rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-foreground hover:bg-muted disabled:opacity-50"
+            >
+              {q.isFetching ? "Chargement…" : `Charger ${Math.min(STEP, total - rows.length)} de plus`}
+            </button>
+          )}
+        </div>
       )}
 
       {tier === "free" && (
