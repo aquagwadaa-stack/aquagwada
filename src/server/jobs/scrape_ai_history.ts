@@ -125,7 +125,9 @@ Règles strictes :
 }
 
 function findCommuneId(name: string, communes: CommuneRow[]): string | null {
+  if (!name) return null;
   const target = norm(name);
+  if (!target) return null;
   for (const c of communes) {
     if (norm(c.name) === target) return c.id;
   }
