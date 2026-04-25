@@ -16,18 +16,24 @@ export type Outage = {
   commune?: { name: string; slug: string } | null;
 };
 
+function effectiveEndMs(outage: Outage): number {
+  if (outage.ends_at) return new Date(outage.ends_at).getTime();
+  const start = new Date(outage.starts_at).getTime();
+  return start + (outage.estimated_duration_minutes ?? 180) * 60_000;
+}
+
 function normalizeOutageStatus(outage: Outage): Outage {
   const now = Date.now();
   const start = new Date(outage.starts_at).getTime();
-  const end = outage.ends_at ? new Date(outage.ends_at).getTime() : null;
+  const end = effectiveEndMs(outage);
 
   const withDefaultEstimate = outage.ends_at || outage.estimated_duration_minutes
     ? outage
     : { ...outage, estimated_duration_minutes: 180 };
 
   if (outage.status === "cancelled" || outage.status === "resolved") return withDefaultEstimate;
-  if (end !== null && end < now) return { ...withDefaultEstimate, status: "resolved" };
-  if (start <= now && (end === null || end >= now) && outage.status === "scheduled") {
+  if (end < now) return { ...withDefaultEstimate, status: "resolved" };
+  if (start <= now && end >= now && outage.status === "scheduled") {
     return { ...withDefaultEstimate, status: "ongoing" };
   }
   return withDefaultEstimate;
@@ -43,7 +49,11 @@ export async function fetchOutagesWindow(fromIso: string, toIso: string, commune
   if (communeIds && communeIds.length) q = q.in("commune_id", communeIds);
   const { data, error } = await q;
   if (error) throw error;
-  return ((data ?? []) as unknown as Outage[]).map(normalizeOutageStatus);
+  const fromMs = new Date(fromIso).getTime();
+  const toMs = new Date(toIso).getTime();
+  return ((data ?? []) as unknown as Outage[])
+    .map(normalizeOutageStatus)
+    .filter((o) => new Date(o.starts_at).getTime() <= toMs && effectiveEndMs(o) >= fromMs);
 }
 
 export async function fetchOngoingOutages(): Promise<Outage[]> {
@@ -57,7 +67,9 @@ export async function fetchOngoingOutages(): Promise<Outage[]> {
     .neq("status", "cancelled")
     .order("starts_at", { ascending: false });
   if (error) throw error;
-  return ((data ?? []) as unknown as Outage[]).map(normalizeOutageStatus);
+  return ((data ?? []) as unknown as Outage[])
+    .map(normalizeOutageStatus)
+    .filter((o) => o.status === "ongoing");
 }
 
 export async function fetchOutagesByCommune(communeId: string, days = 30): Promise<Outage[]> {

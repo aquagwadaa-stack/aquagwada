@@ -14,6 +14,7 @@ import { ReportBlock } from "@/components/reports/ReportBlock";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
 import { HistoryPanel } from "@/components/history/HistoryPanel";
+import { fetchHistoryRange } from "@/lib/queries/history";
 import { ForecastTeaserLocked } from "@/components/upsell/ForecastTeaser";
 import { useEffectiveTier } from "@/hooks/use-admin";
 
@@ -158,11 +159,29 @@ function CartePage() {
   }, [dayKey]);
 
   const pastOutages = useQuery({
-    queryKey: ["outages-past7", pastRange.startIso, pastRange.endIso],
-    queryFn: () => fetchOutagesWindow(pastRange.startIso, pastRange.endIso, timelineCommuneIds.length > 0 ? timelineCommuneIds : undefined),
+    queryKey: ["history-timeline-past7", pastRange.startIso, pastRange.endIso, timelineCommuneIds.join(",")],
+    queryFn: () => fetchHistoryRange(pastRange.startIso, pastRange.endIso, timelineCommuneIds.length > 0 ? timelineCommuneIds : undefined),
     staleTime: 5 * 60_000,
     enabled: timelineCommuneIds.length > 0,
   });
+  const pastTimelineOutages = useMemo(
+    () => (pastOutages.data ?? []).map((h) => ({
+      id: h.id,
+      commune_id: h.commune_id,
+      sector: h.sector,
+      starts_at: h.starts_at,
+      ends_at: h.ends_at,
+      estimated_duration_minutes: h.duration_minutes,
+      status: "resolved" as const,
+      source: h.source as "official" | "scraping" | "user_report" | "forecast",
+      reliability_score: h.reliability_score,
+      cause: h.cause,
+      description: null,
+      source_url: null,
+      commune: h.commune,
+    })),
+    [pastOutages.data]
+  );
 
   // Pour l'historique panel : si Business → toutes communes, sinon favs
   const historyCommuneIds = tier === "business" || !user ? allCommunes.map((c) => c.id) : favIds;
@@ -257,7 +276,7 @@ function CartePage() {
             lockedCtaText="Essai gratuit Pro 7j · sans CB"
             lockedCtaTo="/abonnements"
             teaserHours={1}
-            communes={restrictToFavs && !favs.isLoading && favCommunes.length > 0 ? favCommunes : undefined}
+            communes={timelineCommunes.length > 0 ? timelineCommunes : undefined}
           />
         </div>
 
@@ -292,7 +311,7 @@ function CartePage() {
                 <DayTimeline
                   key={d.toISOString()}
                   date={d}
-                  outages={(pastOutages.data ?? []).filter((o) => {
+                  outages={pastTimelineOutages.filter((o) => {
                     const t = new Date(o.starts_at);
                     return t.toDateString() === d.toDateString();
                   })}
