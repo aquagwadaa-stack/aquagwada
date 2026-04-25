@@ -265,8 +265,8 @@ export function DayTimeline({
                   const s = new Date(o.starts_at).getTime();
                   const end = outageEndForTimeline(o, endOfDay);
                   const e = end.getTime();
-                  const left = Math.max(0, ((s - startOfDay.getTime()) / dayMs) * 100);
-                  const widthPct = Math.max(1.5, ((e - Math.max(s, startOfDay.getTime())) / dayMs) * 100);
+                  const segment = segmentPosition(s, e, startOfDay, endOfDay);
+                  if (!segment) return null;
                   const tone =
                     o.status === "ongoing" ? "bg-destructive/25 border-destructive/50"
                       : o.status === "resolved" ? "bg-success/20 border-success/50"
@@ -276,7 +276,7 @@ export function DayTimeline({
                     <div
                       key={o.id}
                       className={`absolute top-1 bottom-1 rounded border ${tone} px-1 overflow-hidden flex items-center`}
-                      style={{ left: `${left}%`, width: `${Math.min(100 - left, widthPct)}%` }}
+                      style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
                        title={`${formatHM(o.starts_at)}–${outageEndLabel(o, end)} · ${o.sector || o.cause || "Coupure"}`}
                     >
                       <span className="text-[10px] font-medium truncate">
@@ -286,18 +286,14 @@ export function DayTimeline({
                   );
                 })}
                 {cForecasts.map((f) => {
-                  const [sh, sm] = (f.window_start ?? "08:00:00").split(":").map(Number);
-                  const [eh, em] = (f.window_end ?? "10:00:00").split(":").map(Number);
-                  const startMs = startOfDay.getTime() + (sh * 60 + sm) * 60_000;
-                  const endMs = startOfDay.getTime() + (eh * 60 + em) * 60_000;
-                  const left = Math.max(0, ((startMs - startOfDay.getTime()) / dayMs) * 100);
-                  const widthPct = Math.max(1.5, ((endMs - startMs) / dayMs) * 100);
+                  const segment = forecastWindowForTimeline(f, startOfDay, endOfDay);
+                  if (!segment) return null;
                   const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
                   return (
                     <div
                       key={f.id}
                       className={`absolute top-1 bottom-1 rounded border border-dashed ${intensity} px-1 overflow-hidden flex items-center`}
-                      style={{ left: `${left}%`, width: `${Math.min(100 - left, widthPct)}%` }}
+                      style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
                       title={`Prévision ${Math.round(f.probability * 100)}% · ${f.basis ?? ""}`}
                     >
                       <span className="text-[10px] font-medium truncate flex items-center gap-1">
