@@ -70,7 +70,7 @@ function CarteAuthed() {
 
   // Communes favorites
   const favs = useQuery({
-    queryKey: ["favs-min", user!.id],
+    queryKey: ["favs", user!.id],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("user_communes")

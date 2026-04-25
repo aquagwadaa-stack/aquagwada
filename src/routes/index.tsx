@@ -47,7 +47,7 @@ function Index() {
 
   // Communes favorites des utilisateurs connectés
   const favs = useQuery({
-    queryKey: ["favs-min", user?.id ?? "anon"],
+    queryKey: ["favs", user?.id ?? "anon"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("user_communes")
