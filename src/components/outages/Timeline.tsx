@@ -320,11 +320,31 @@ export function DayTimeline({
 
           {/* Mode multi-communes : une ligne par commune favorite */}
           {multiMode && communes!.map((c) => {
-            const cOutages = outages.filter((o) => o.commune_id === c.id);
+            const cOutagesRaw = outages.filter((o) => o.commune_id === c.id);
+            const cOutages = groupOutagesByWindow(cOutagesRaw);
             const cForecasts = dailyForecasts.filter((f) => f.commune_id === c.id);
             const isEmpty = cOutages.length === 0 && cForecasts.length === 0;
+
+            // Compute lanes : on mélange coupures + prévisions et on les empile.
+            const layoutItems: Array<{ key: string; startMs: number; endMs: number; type: "outage" | "forecast"; ref: GroupedOutage | Forecast }> = [];
+            for (const g of cOutages) {
+              const s = new Date(g.starts_at).getTime();
+              const end = outageEndForTimeline(g.primary, endOfDay);
+              layoutItems.push({ key: `o-${g.key}`, startMs: s, endMs: end.getTime(), type: "outage", ref: g });
+            }
+            for (const f of cForecasts) {
+              const seg = forecastWindowForTimeline(f, startOfDay, endOfDay);
+              if (!seg) continue;
+              const startMs = startOfDay.getTime() + (seg.left / 100) * dayMs;
+              const endMs = startMs + (seg.width / 100) * dayMs;
+              layoutItems.push({ key: `f-${f.id}`, startMs, endMs, type: "forecast", ref: f });
+            }
+            const { laneOf, laneCount } = computeLanes(layoutItems);
+            const laneHeight = 22; // px
+            const rowHeight = Math.max(40, laneCount * laneHeight + (laneCount - 1) * 4 + 8);
+
             return (
-              <div key={c.id} className="relative h-10 group">
+              <div key={c.id} className="relative group" style={{ height: rowHeight }}>
                 {/* Étiquette commune (en dehors du conteneur scaled grâce au marginLeft parent) */}
                 <div className="absolute right-full top-0 bottom-0 w-24 -ml-0 flex items-center pr-2 text-[11px] font-medium truncate text-foreground/80" style={{ marginRight: 0 }}>
                   <span className="truncate">{c.name}</span>
@@ -338,26 +358,33 @@ export function DayTimeline({
                     </span>
                   </div>
                 )}
-                {cOutages.map((o) => {
-                  const s = new Date(o.starts_at).getTime();
-                  const end = outageEndForTimeline(o, endOfDay);
+                {cOutages.map((g) => {
+                  const s = new Date(g.starts_at).getTime();
+                  const end = outageEndForTimeline(g.primary, endOfDay);
                   const e = end.getTime();
                   const segment = segmentPosition(s, e, startOfDay, endOfDay);
                   if (!segment) return null;
+                  const lane = laneOf.get(`o-${g.key}`) ?? 0;
+                  const top = 4 + lane * (laneHeight + 4);
                   const tone =
-                    o.status === "ongoing" ? "bg-destructive/25 border-destructive/50"
-                      : o.status === "resolved" ? "bg-success/20 border-success/50"
-                      : o.status === "cancelled" ? "bg-muted border-border"
+                    g.status === "ongoing" ? "bg-destructive/25 border-destructive/50"
+                      : g.status === "resolved" ? "bg-success/20 border-success/50"
+                      : g.status === "cancelled" ? "bg-muted border-border"
                       : "bg-warning/25 border-warning/50";
+                  const sectorLabel = g.sectors.length === 0
+                    ? ""
+                    : g.sectors.length <= 2
+                      ? ` · ${g.sectors.join(", ")}`
+                      : ` · ${g.sectors.length} secteurs`;
                   return (
                     <div
-                      key={o.id}
-                      className={`absolute top-1 bottom-1 rounded border ${tone} px-1 overflow-hidden flex items-center`}
-                      style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
-                       title={`${formatHM(o.starts_at)}–${outageEndLabel(o, end)} · ${o.sector || o.cause || "Coupure"}`}
+                      key={g.key}
+                      className={`absolute rounded border ${tone} px-1 overflow-hidden flex items-center`}
+                      style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
+                      title={`${formatHM(g.starts_at)}–${outageEndLabel(g.primary, end)}${sectorLabel}`}
                     >
                       <span className="text-[10px] font-medium truncate">
-                         {formatHM(o.starts_at)}–{outageEndLabel(o, end)}
+                         {formatHM(g.starts_at)}–{outageEndLabel(g.primary, end)}{sectorLabel}
                       </span>
                     </div>
                   );
@@ -365,12 +392,14 @@ export function DayTimeline({
                 {cForecasts.map((f) => {
                   const segment = forecastWindowForTimeline(f, startOfDay, endOfDay);
                   if (!segment) return null;
+                  const lane = laneOf.get(`f-${f.id}`) ?? 0;
+                  const top = 4 + lane * (laneHeight + 4);
                   const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
                   return (
                     <div
                       key={f.id}
-                      className={`absolute top-1 bottom-1 rounded border border-dashed ${intensity} px-1 overflow-hidden flex items-center`}
-                      style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
+                      className={`absolute rounded border border-dashed ${intensity} px-1 overflow-hidden flex items-center`}
+                      style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
                       title={`Prévision ${Math.round(f.probability * 100)}% · ${f.basis ?? ""}`}
                     >
                       <span className="text-[10px] font-medium truncate flex items-center gap-1">
