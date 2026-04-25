@@ -3,17 +3,15 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useAuth } from "@/providers/AuthProvider";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchCommunes } from "@/lib/queries/communes";
-import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
-import { fetchForecastsRange } from "@/lib/queries/forecasts";
-import { fetchHistoryRange } from "@/lib/queries/history";
+import { fetchOngoingOutages } from "@/lib/queries/outages";
 import { CurrentStatusCard } from "@/components/outages/CurrentStatusCard";
-import { DayTimeline, DayPicker } from "@/components/outages/Timeline";
+import { OutageTimeline } from "@/components/outages/OutageTimeline";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { useMemo, useState } from "react";
 import { Heart, Plus, Trash2, Lock, Sparkles } from "lucide-react";
 import { toast } from "sonner";
-import { canSeeForecasts, PLAN_CAPS, type Tier } from "@/lib/subscription";
+import { PLAN_CAPS, type Tier } from "@/lib/subscription";
 import { UpsellCard } from "@/components/upsell/LockedFeature";
 import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
 import { NotificationPreferencesPanel } from "@/components/notifications/NotificationPreferencesPanel";
@@ -65,8 +63,6 @@ function Authed() {
   const trialExpired = !!subscription.data?.trialExpired;
   const trialEndsAt = subscription.data?.trialEndsAt ?? null;
   const caps = PLAN_CAPS[tier];
-  const showForecasts = canSeeForecasts(tier);
-  const forecastDays = caps.forecastDays;
   const tierLabel = tier === "free"
     ? "Plan gratuit"
     : tier === "pro"
@@ -108,65 +104,6 @@ function Authed() {
     enabled: favIds.length > 0,
   });
 
-  const [selectedDay, setSelectedDay] = useState<Date>(() => {
-    const d = new Date(); d.setHours(0, 0, 0, 0); return d;
-  });
-  const dayStart = useMemo(() => {
-    const d = new Date(selectedDay); d.setHours(0, 0, 0, 0); return d;
-  }, [selectedDay]);
-  const dayEnd = useMemo(() => {
-    const d = new Date(selectedDay); d.setHours(23, 59, 59, 999); return d;
-  }, [selectedDay]);
-
-  const dayOutages = useQuery({
-    queryKey: ["outages-day-favs", favIds, dayStart.toISOString()],
-    queryFn: () => fetchOutagesWindow(dayStart.toISOString(), dayEnd.toISOString(), favIds),
-    enabled: favIds.length > 0 && dayStart.getTime() >= new Date().setHours(0, 0, 0, 0),
-    staleTime: 60_000,
-  });
-
-  // Si jour passé, on tape l'historique archivé
-  const isPastDay = dayStart.getTime() < new Date().setHours(0, 0, 0, 0);
-  const dayHistory = useQuery({
-    queryKey: ["history-day-favs", favIds, dayStart.toISOString()],
-    queryFn: () => fetchHistoryRange(dayStart.toISOString(), dayEnd.toISOString(), favIds),
-    enabled: favIds.length > 0 && isPastDay,
-    staleTime: 5 * 60_000,
-  });
-
-  const dayForecasts = useQuery({
-    queryKey: ["forecasts-day-favs", favIds, dayStart.toISOString().slice(0, 10), showForecasts],
-    queryFn: () => fetchForecastsRange(
-      dayStart.toISOString().slice(0, 10),
-      dayStart.toISOString().slice(0, 10),
-      favIds,
-    ),
-    enabled: favIds.length > 0 && showForecasts,
-  });
-
-  // Données fusionnées pour la timeline du jour : historique pour le passé,
-  // outages live sinon.
-  const timelineDayOutages = useMemo(() => {
-    if (isPastDay) {
-      return (dayHistory.data ?? []).map((h) => ({
-        id: h.id,
-        commune_id: h.commune_id,
-        sector: h.sector,
-        starts_at: h.starts_at,
-        ends_at: h.ends_at,
-        estimated_duration_minutes: h.duration_minutes,
-        status: "resolved" as const,
-        source: h.source as "official" | "scraping" | "user_report" | "forecast",
-        reliability_score: h.reliability_score,
-        cause: h.cause,
-        description: null,
-        source_url: null,
-        commune: h.commune,
-      }));
-    }
-    return dayOutages.data ?? [];
-  }, [isPastDay, dayHistory.data, dayOutages.data]);
-
   const [pickerCommune, setPickerCommune] = useState("");
 
   async function addFav() {
@@ -190,7 +127,6 @@ function Authed() {
   }
 
   const available = (communes.data ?? []).filter((c) => !favIds.includes(c.id));
-  const isFutureDay = dayStart.getTime() > Date.now();
 
   return (
     <AppShell>
@@ -198,7 +134,7 @@ function Authed() {
         <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h1 className="font-display text-3xl font-bold">Mes communes</h1>
-            <p className="text-sm text-muted-foreground">Statut en direct et timeline du jour pour vos communes favorites.</p>
+            <p className="text-sm text-muted-foreground">Statut en direct et frise chronologique pour vos communes favorites.</p>
           </div>
           <div className="rounded-full border border-border bg-card px-3 py-1.5 text-xs">
             <span className="text-muted-foreground">Quota : </span>
@@ -305,47 +241,12 @@ function Authed() {
         )}
 
         {favIds.length > 0 && (
-          <div className="space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="font-display text-xl font-semibold">Timeline</h2>
-              {isFutureDay && !showForecasts && (
-                <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                  <Lock className="h-3 w-3" /> Prévisions réservées au plan Pro
-                </span>
-              )}
-            </div>
-            <DayPicker
-              selected={selectedDay}
-              onChange={setSelectedDay}
-              forwardDays={showForecasts ? forecastDays : 0}
-              backDays={7}
-            />
-            <DayTimeline
-              date={selectedDay}
-              outages={timelineDayOutages}
-              forecasts={dayForecasts.data ?? []}
-              showForecasts={showForecasts}
-              lockedAfterNow={!showForecasts}
-              lockedCtaText="Essai gratuit Pro 7j · sans CB"
-              lockedCtaTo="/abonnements"
-              teaserHours={1}
-              communes={favCommunes.length > 0 ? favCommunes : undefined}
-            />
-            {isFutureDay && !showForecasts && (
-              <div className="rounded-xl border border-warning/30 bg-warning/5 p-4 text-sm">
-                <div className="flex items-start gap-3">
-                  <Lock className="h-4 w-4 text-warning shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium">Prévisions à 14 jours</p>
-                    <p className="text-muted-foreground text-xs mt-1">
-                      Anticipez vos coupures grâce au moteur statistique.{" "}
-                      <Link to="/abonnements" className="text-primary underline">Découvrir Pro</Link>
-                    </p>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <OutageTimeline
+            tier={tier}
+            mode="favorites"
+            communes={favCommunes}
+            visibleCount={3}
+          />
         )}
 
         <NotificationPreferencesPanel tier={tier} />
