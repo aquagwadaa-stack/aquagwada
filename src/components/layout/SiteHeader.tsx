@@ -1,8 +1,9 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
-import { Droplets, Menu, X } from "lucide-react";
+import { Droplets, Menu, X, ShieldCheck } from "lucide-react";
 import { useState } from "react";
+import { useIsAdmin } from "@/hooks/use-admin";
 
 const NAV = [
   { to: "/carte", label: "Carte" },
@@ -14,6 +15,7 @@ export function SiteHeader() {
   const { user, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const { isAdmin } = useIsAdmin();
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/60 bg-background/85 backdrop-blur">
@@ -45,6 +47,11 @@ export function SiteHeader() {
         <div className="hidden md:flex items-center gap-2">
           {user ? (
             <>
+              {isAdmin && (
+                <Button asChild variant="ghost" size="sm" className="text-primary">
+                  <Link to="/admin"><ShieldCheck className="h-4 w-4 mr-1" />Admin</Link>
+                </Button>
+              )}
               <Button asChild variant="ghost" size="sm"><Link to="/ma-commune">Mon espace</Link></Button>
               <Button size="sm" variant="outline" onClick={signOut}>Se déconnecter</Button>
             </>
@@ -66,6 +73,11 @@ export function SiteHeader() {
           {NAV.map((item) => (
             <Link key={item.to} to={item.to} onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm hover:bg-secondary">{item.label}</Link>
           ))}
+          {isAdmin && (
+            <Link to="/admin" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm text-primary hover:bg-secondary">
+              <ShieldCheck className="h-4 w-4 inline mr-1" /> Admin
+            </Link>
+          )}
           <div className="pt-2">
             {user ? (
               <Button size="sm" variant="outline" className="w-full" onClick={signOut}>Se déconnecter</Button>
