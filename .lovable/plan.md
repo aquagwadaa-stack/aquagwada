@@ -1,89 +1,68 @@
-Je vais arrêter de patcher au hasard et faire une reprise solide en 3 blocs : source de données, génération prévisions, affichage timeline.
+Je comprends ta frustration. On arrête de tourner en rond : on continue ici, de manière cadrée. Je ne peux pas créer moi-même une nouvelle conversation dans ton interface, et si le bouton n’apparaît pas, le plus efficace est de finir directement dans ce fil.
 
-Constat vérifié
-- Il y a bien des données en base : environ 1 049 lignes d'historique et 61 prévisions.
-- Le dernier backfill SMGEAG échoue maintenant parce que l'analyse d'images par IA renvoie une erreur de crédits, donc les plannings ne sont plus importés automatiquement correctement.
-- Les timelines se superposent parce que plusieurs coupures/prévisions d'une même commune et d'un même créneau sont dessinées sur la même ligne, sans empilement ni fusion.
-- Certaines lignes sont dupliquées, par exemple mêmes créneaux SMGEAG avec secteur `null` et secteur vide, ce qui aggrave la superposition.
-- L'historique peut sembler à 0 car l'UI filtre selon favoris/plan et n'a pas d'état de diagnostic clair, alors que la base contient bien des lignes.
+Point important côté crédits : en mode Plan, chaque message consomme 1 crédit. Pour économiser, je propose de faire une seule passe d’implémentation après ton approbation, avec vérification intégrée, au lieu de rediscuter longtemps.
 
-Plan d'implémentation
+Plan d’action immédiat
 
-1. Corriger la timeline proprement
-- Remplacer le rendu actuel par un moteur de layout qui calcule des “lanes” par commune.
-- Si deux événements se chevauchent, ils seront soit fusionnés si ce sont les mêmes infos officielles, soit empilés verticalement dans la ligne de la commune.
-- Augmenter automatiquement la hauteur d'une commune quand plusieurs événements se chevauchent.
-- Afficher un résumé clair au lieu de barres illisibles quand une commune a plusieurs secteurs coupés sur le même créneau.
-- Appliquer la même logique aux coupures passées, aux coupures actuelles et aux prévisions.
+1. Finaliser l’historique visible et utile
 
-2. Dédupliquer et normaliser les données SMGEAG
-- Ajouter une normalisation stricte : `null`, `"null"`, secteur vide, secteur générique deviennent une seule valeur cohérente.
-- Créer une clé stable par commune + date + heure début + heure fin + secteur normalisé + source.
-- Dédupliquer les doublons existants dans `outages`, `outage_history` et `forecasts`.
-- Corriger les coupures “infinies” : toute coupure active sans fin recevra une fin estimée et sera archivée dès qu'elle est dépassée.
-- Vérifier le cas Baillif et autres anciennes coupures encore `ongoing` malgré une date passée.
+- Garder le `HistoryPanel` déjà présent sur `/ma-commune` et `/carte`.
+- L’améliorer pour qu’il ne donne plus l’impression de “0 historique” :
+  - afficher un résumé clair : nombre de coupures archivées, période couverte, communes concernées ;
+  - ajouter un état vide plus honnête selon le cas : pas de favoris, pas de données sur la fenêtre du plan, ou historique disponible ailleurs ;
+  - mieux présenter les lignes : commune, date, heures, durée, source/cause si disponible ;
+  - corriger le libellé incohérent sur la carte : gratuit = 7 jours, Pro = 1 an, Business = 5 ans.
 
-3. Rendre l'historique réellement visible
-- Modifier `HistoryPanel` pour afficher un état honnête : total global, total sur la période, total après filtre commune.
-- Sur la page `carte`, pour la vue globale, afficher l'historique global si l'utilisateur n'a pas de favoris ou s'il est admin/business.
-- Éviter le message “aucune coupure archivée” quand le problème est juste un filtre trop restrictif.
-- Ajouter un petit indicateur “dernière donnée officielle importée” pour savoir si le flux est à jour.
+2. Stabiliser les prévisions
 
-4. Refaire le backfill SMGEAG sans dépendre uniquement de l'IA image
-- Garder l'IA comme option, mais ne plus en faire le seul chemin.
-- Ajouter un parseur déterministe des posts SMGEAG : récupérer les posts WordPress, extraire les images de planning, inférer la semaine depuis le titre/URL, identifier zone/commune/secteur depuis les noms d'images et textes disponibles.
-- Si l'IA est disponible, elle enrichit les secteurs; si elle échoue, le job importe quand même des créneaux fiables “planning officiel” au niveau commune/zone au lieu d'insérer 0.
-- Le backfill continuera automatiquement, mais en mode robuste : il ne doit plus faire “posts trouvés, 0 inséré” sans expliquer pourquoi.
+- Ajuster le moteur statistique actuel pour éviter les prévisions trop extrêmes ou trop peu nombreuses.
+- Objectif : afficher quelque chose de crédible même quand le planning officiel de la semaine suivante n’est pas encore publié.
+- Modifier le tuning :
+  - plafonner les probabilités statistiques à un niveau plus raisonnable sauf planning officiel ;
+  - réduire l’effet qui donne 95% trop facilement sur certaines communes ;
+  - garder les plannings officiels SMGEAG prioritaires avec forte confiance ;
+  - élargir légèrement les prévisions statistiques pour couvrir plus de communes/jours, mais avec des labels “risque faible / modéré / élevé” plutôt qu’un faux sentiment de certitude.
 
-5. Régénérer les prévisions de façon moins vide mais non mensongère
-- Séparer deux types de prévisions :
-  - Officielles SMGEAG : très haute confiance, depuis planning publié.
-  - Statistiques : probabilité modérée, clairement indiquée comme estimation.
-- Générer au moins des prévisions faibles/modérées pour les communes avec historique suffisant, sans faire croire à une certitude.
-- Pour les communes très peu historiques, afficher “signal insuffisant” plutôt qu'une page vide.
-- Protéger les prévisions officielles lors de la régénération.
+3. Vérification base de données
 
-6. Automatisation et monitoring
-- Vérifier et corriger les jobs automatiques actuels : scrape réseau, planning, backfill, génération prévisions, archivage.
-- Ajouter des logs exploitables dans `scraper_runs` : raison des échecs, nombre de posts, images, items parsés, doublons ignorés, erreurs IA, fallback utilisé.
-- Faire que l'automatisation mette à jour les données sans action manuelle de ta part.
+- Vérifier les volumes après correction :
+  - `outage_history` contient déjà environ 940 lignes avec historique depuis 2020 ;
+  - `forecasts` contient déjà des prévisions jusqu’au 9 mai ;
+  - les politiques de lecture sont publiques pour historique/prévisions, donc l’affichage ne devrait pas être bloqué par les droits.
+- Lancer/réutiliser le job de génération des prévisions si nécessaire pour remplir les nouvelles valeurs.
+- Contrôler qu’on obtient bien :
+  - historique non vide sur les communes ayant des données ;
+  - prévisions sur les 14 prochains jours ;
+  - pas de doublons évidents.
 
-7. Validation après correction
-- Requête de contrôle : nombre d'historiques par commune, derniers imports, prévisions par jour, coupures actives sans fin.
-- Test des routes de jobs.
-- Test visuel logique des timelines : plus de superposition, barres multi-secteurs lisibles, jours passés/futurs cohérents.
+4. Vérification UI
+
+- Vérifier les pages principales :
+  - `/carte` : timeline aujourd’hui, 7 derniers jours, prévisions, HistoryPanel détaillé ;
+  - `/ma-commune` : favoris, timeline, prévisions si Pro/essai, historique ;
+  - `/` : aperçu prévisions si accès autorisé, teaser sinon.
+- Vérifier particulièrement :
+  - aucune superposition majeure dans les timelines ;
+  - les états vides expliquent quoi faire ;
+  - gratuit/Pro/Business affichent les bonnes limites ;
+  - mobile et desktop restent lisibles.
+
+5. page "carte"
+  cette page a tout le temps un probleme, elle ne suit jamais les rgeles des autres pages... il y a une liste horrible des 7 dernieres jours, cela rend la page immense et illisible, il faut que ca soit comme dans "ma commune", ca doit etre une seule time line (avec listse exhaustive des communes choisies) et la possibilités de choisir ces jours, tout simplement. cette time lige permet TOUT avec les jours passées (sur 7 jours), les jours futurs (prévisions), et on choisis le jours avec une liste horizontal juste au dessus (exactemnt comme dans "ma commune) mais on rajoute les 7 derniers jours juste avant. evidemant selon les plans choisis par l'utilisateur. respecte les acces pour chaque plan !!!  tu les as deja. et tu fais ca pour TOUTTTTTEEEES les time line du site. pas d'exception. (attention je ne parle pas de l'historique sur 1 an pour pro et 3 pour business, ca cest autre chose) pareil pour quand un uttilisateurs est pas connecté. il voit tout avec des listes sans noms incompréhensible. 
+6. verifie bien que chaque texte amenant a donné une info sur un plan soit bonne pour chaque endroit du site, par exmple jai trouvé  au hasard un endroit ou tu dis que les pros ont 6 mis d'historique. ce qui est faux.
 
 Détails techniques
+
 - Fichiers principaux à modifier :
-  - `src/components/outages/Timeline.tsx`
   - `src/components/history/HistoryPanel.tsx`
-  - `src/routes/carte.tsx`
-  - `src/routes/ma-commune.tsx` si nécessaire pour cohérence
-  - `src/lib/queries/history.ts`
-  - `src/lib/queries/outages.ts`
-  - `src/lib/queries/forecasts.ts`
-  - `src/server/jobs/scrape_planning.ts`
   - `src/server/jobs/generate_forecasts.ts`
-  - routes `/api/public/jobs/*` si besoin
-- Migration/data fix à prévoir :
-  - déduplication des données existantes,
-  - correction des coupures expirées,
-  - index/contraintes utiles si manquants,
-  - maintien des règles de lecture publique pour données coupures/prévisions/historique.
+  - éventuellement `src/routes/carte.tsx` pour les libellés et l’intégration visuelle.
+- Pas besoin d’ajouter d’IA payante pour cette étape : on reste sur un moteur statistique local basé sur les données déjà stockées.
+- Pas besoin de nouvelle table sauf découverte d’un blocage pendant l’implémentation.
 
-Si après cette reprise la discussion est trop longue, voici le prompt propre pour repartir dans une nouvelle discussion :
+Résultat attendu
 
-```text
-Projet AquaGwada. Il faut stabiliser les données de coupures SMGEAG et les timelines.
-Problèmes actuels : superpositions dans les timelines, historique visible comme vide alors que la base a des données, prévisions trop rares, backfill SMGEAG qui échoue parfois avec posts/images trouvés mais 0 insertion, coupures anciennes encore en cours ou sans fin.
-Objectif : faire une reprise solide de bout en bout.
-À faire :
-1) auditer la base : outages, outage_history, forecasts, scraper_runs, cron jobs ;
-2) corriger les coupures expirées et dédupliquer les doublons ;
-3) rendre le backfill des plannings SMGEAG robuste depuis octobre 2025, avec fallback sans dépendre uniquement de l'IA image ;
-4) générer des prévisions officielles quand planning présent et statistiques quand planning absent, sans inventer une certitude ;
-5) refaire le composant Timeline pour empiler/fusionner les événements qui se chevauchent au lieu de les superposer ;
-6) rendre l'historique visible avec diagnostics de filtres ;
-7) vérifier que les jobs automatiques tournent sans clic manuel.
-Ne pas éditer les fichiers Supabase auto-générés client/types. Utiliser Lovable Cloud pour migrations/data fixes. Parler à l'utilisateur simplement, en français.
-```
+- L’utilisateur ne voit plus “0 historique” alors que la base contient des données.
+- Les prévisions sont présentes, lisibles et moins absurdes.
+- Les timelines restent stables.
+- On sort de la boucle avec une app AquaGwada utilisable sur historique + prévisions.

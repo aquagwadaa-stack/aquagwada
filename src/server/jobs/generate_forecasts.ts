@@ -15,8 +15,15 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 const HISTORY_DAYS_LONG = 365 * 3;     // jusqu'à 3 ans
 const HISTORY_DAYS_RECENT = 60;         // pour calcul de tendance
 const FORECAST_DAYS = 14;
-const MIN_SAMPLE_FOR_PREDICTION = 3;
-const MIN_PROBABILITY_KEEP = 0.04;
+const MIN_SAMPLE_FOR_PREDICTION = 2;
+const MIN_PROBABILITY_KEEP = 0.03;
+/**
+ * Plafond sur les prévisions purement statistiques. Au-delà on bascule
+ * dans une zone de fausse certitude qui dessert les utilisateurs. Les
+ * plannings officiels SMGEAG (insérés ailleurs avec basis = "Planning officiel
+ * SMGEAG…") gardent leur 0.95-0.98 puisqu'ils sont déterministes.
+ */
+const STATISTICAL_PROBABILITY_CAP = 0.75;
 
 type HistRow = {
   commune_id: string;
@@ -181,7 +188,7 @@ export async function generateForecasts(): Promise<{ generated: number; communes
     const observedSpan = Math.min(HISTORY_DAYS_LONG, Math.max(7, (Date.now() - new Date(events[0].starts_at).getTime()) / 86400_000));
     // Mélange : densité brute (jours uniques) × facteur volume pondéré
     const baseProbability = Math.min(
-      0.95,
+      STATISTICAL_PROBABILITY_CAP,
       (uniqueDays / observedSpan) * Math.min(1.5, 0.6 + weightedVolume / Math.max(1, events.length))
     );
 
@@ -205,8 +212,13 @@ export async function generateForecasts(): Promise<{ generated: number; communes
 
       const season = seasonalMultiplier(date);
       const recurrenceBoost = recurrence && recurrence.dow === dow ? Math.min(1.8, 1 + recurrence.strength / 5) : 1;
-      // Probabilité combinée : base × jour-semaine × saison × récurrence
-      const adjusted = Math.min(0.95, baseProbability * Math.max(0.4, Math.min(2, dowSignal)) * season * recurrenceBoost);
+      // Probabilité combinée : base × jour-semaine × saison × récurrence,
+      // mais plafonnée à STATISTICAL_PROBABILITY_CAP pour ne pas afficher
+      // de quasi-certitude sur des bases purement statistiques.
+      const adjusted = Math.min(
+        STATISTICAL_PROBABILITY_CAP,
+        baseProbability * Math.max(0.4, Math.min(1.6, dowSignal)) * season * recurrenceBoost,
+      );
       if (adjusted < MIN_PROBABILITY_KEEP) continue;
 
       const winStart = `${String(mode.hour).padStart(2, "0")}:00:00`;
@@ -214,7 +226,12 @@ export async function generateForecasts(): Promise<{ generated: number; communes
       const winEnd = `${String(winEndH).padStart(2, "0")}:00:00`;
 
       const dayBasis: string[] = [];
-      dayBasis.push(`${events.length} événements historiques pondérés (${Math.round(observedSpan)}j observés)`);
+      // Étiquette qualitative pour aider l'utilisateur à interpréter sans se
+      // fier au seul chiffre : risque faible / modéré / élevé.
+      const riskLabel = adjusted >= 0.55 ? "risque élevé"
+        : adjusted >= 0.3 ? "risque modéré"
+        : "risque faible";
+      dayBasis.push(`${riskLabel} basé sur ${events.length} événements historiques pondérés (${Math.round(observedSpan)}j observés)`);
       dayBasis.push(`Plage modale ${winStart}–${winEnd}`);
       if (Math.abs(dowSignal - 1) > 0.25) {
         dayBasis.push(`${date.toLocaleDateString("fr-FR", { weekday: "long" })}s ${dowSignal > 1 ? "à risque" : "plutôt calmes"} (${dowSignal.toFixed(2)}×)`);

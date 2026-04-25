@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { fetchCommunes } from "@/lib/queries/communes";
 import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
 import { fetchForecastsRange } from "@/lib/queries/forecasts";
+import { fetchHistoryRange } from "@/lib/queries/history";
 import { CurrentStatusCard } from "@/components/outages/CurrentStatusCard";
 import { DayTimeline, DayPicker } from "@/components/outages/Timeline";
 import { Button } from "@/components/ui/button";
@@ -120,7 +121,17 @@ function Authed() {
   const dayOutages = useQuery({
     queryKey: ["outages-day-favs", favIds, dayStart.toISOString()],
     queryFn: () => fetchOutagesWindow(dayStart.toISOString(), dayEnd.toISOString(), favIds),
-    enabled: favIds.length > 0,
+    enabled: favIds.length > 0 && dayStart.getTime() >= new Date().setHours(0, 0, 0, 0),
+    staleTime: 60_000,
+  });
+
+  // Si jour passé, on tape l'historique archivé
+  const isPastDay = dayStart.getTime() < new Date().setHours(0, 0, 0, 0);
+  const dayHistory = useQuery({
+    queryKey: ["history-day-favs", favIds, dayStart.toISOString()],
+    queryFn: () => fetchHistoryRange(dayStart.toISOString(), dayEnd.toISOString(), favIds),
+    enabled: favIds.length > 0 && isPastDay,
+    staleTime: 5 * 60_000,
   });
 
   const dayForecasts = useQuery({
@@ -132,6 +143,29 @@ function Authed() {
     ),
     enabled: favIds.length > 0 && showForecasts,
   });
+
+  // Données fusionnées pour la timeline du jour : historique pour le passé,
+  // outages live sinon.
+  const timelineDayOutages = useMemo(() => {
+    if (isPastDay) {
+      return (dayHistory.data ?? []).map((h) => ({
+        id: h.id,
+        commune_id: h.commune_id,
+        sector: h.sector,
+        starts_at: h.starts_at,
+        ends_at: h.ends_at,
+        estimated_duration_minutes: h.duration_minutes,
+        status: "resolved" as const,
+        source: h.source as "official" | "scraping" | "user_report" | "forecast",
+        reliability_score: h.reliability_score,
+        cause: h.cause,
+        description: null,
+        source_url: null,
+        commune: h.commune,
+      }));
+    }
+    return dayOutages.data ?? [];
+  }, [isPastDay, dayHistory.data, dayOutages.data]);
 
   const [pickerCommune, setPickerCommune] = useState("");
 
@@ -284,11 +318,11 @@ function Authed() {
               selected={selectedDay}
               onChange={setSelectedDay}
               forwardDays={showForecasts ? forecastDays : 0}
-              backDays={0}
+              backDays={7}
             />
             <DayTimeline
               date={selectedDay}
-              outages={dayOutages.data ?? []}
+              outages={timelineDayOutages}
               forecasts={dayForecasts.data ?? []}
               showForecasts={showForecasts}
               lockedAfterNow={!showForecasts}
