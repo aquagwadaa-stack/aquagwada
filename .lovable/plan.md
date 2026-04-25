@@ -1,130 +1,88 @@
-## Objectif
+## Diagnostic — pourquoi les données sont au pif
 
-Reconstruire une **seule frise chronologique** ("Coupures au fil du temps") qui remplace, sur les pages **Accueil, Carte et Ma commune**, les blocs actuels : "Aujourd'hui", "Demain et après ?", "7 derniers jours", "14 prochains jours", anciennes Timelines.
+J'ai inspecté le code, l'API SMGEAG et la base. Voici ce qui se passe vraiment :
 
-L'historique détaillé reste un bloc indépendant (grisé pour Free, limité 1 an Pro).
+### 1. Le "fallback déterministe" a pollué toute la base
+Quand l'IA était hors-crédits, `scrape_planning` est passé en mode **fallback** : il a généré une coupure **20h→07h chaque nuit, pour chaque commune de chaque zone**, sans lire les images. Résultat actuel en base :
 
-Ajouter aussi : restriction d'accès pour visiteurs non connectés + retouches de copie sur l'accueil.
+- `outage_history` : **247 lignes "fallback"** (créneau standard 20h-07h générique) sur 1188 totales
+- `forecasts` : **19 fallback + 212 statistiques** calculées sur cet historique pollué + **1 seule** issue d'une vraie extraction IA
+- `outages` : 51 entrées "official" — la plupart sont des fallback marqués `ongoing`, d'où les coupures qui apparaissent au pif
 
----
+### 2. Le scraper HTML SMGEAG (`scraper_smgeag.ts`) génère du faux positif
+Toutes les 30 min, il trouve **10 items sur `/informations-reseau/`** mais 0 insertion → en réalité il met à jour 10 fausses entrées créées par lui-même en parsant des `<p>` de navigation/footer qui contiennent les mots "réseau" ou "distribution".
 
-## 1. Nouveau composant `OutageTimeline` (remplace tout)
+### 3. Le backfill historique n'a jamais tourné
+80+ posts de planning hebdo existent sur `smgeag.fr/wp-json/wp/v2/posts` (j'ai vérifié, jusqu'à décembre 2024 minimum), avec les bonnes images. Le code `backfillPlanningHistory` existe mais n'a jamais été appelé → on n'a rien d'historique réel.
 
-Un composant unique réutilisé partout, structuré ainsi :
-
-```text
-┌─ Coupures au fil du temps ─────────────────┐
-│  ◀  [mer 23] [jeu 24] [VEN 25 ✓] ...  ▶   │   ← ruban de jours, 3 visibles
-├────────────────────────────────────────────┤
-│  Vendredi 25 avril                         │
-│  00h   06h   12h   18h   24h               │
-│  Baillif       ▓▓▓                         │
-│  Le Moule         ▓▓▓▓        ░░░░ (prév)  │
-│  ...                                       │
-└────────────────────────────────────────────┘
-```
-
-### Ruban de jours (DayRibbon)
-
-- Affiche **3 cases visibles** par défaut (responsive : 5 sur desktop large).
-- Aujourd'hui sélectionné par défaut, **positionné en 4ème case "logique"** dans la liste totale (3 jours passés visibles à sa gauche au démarrage si possible, sinon scroll).
-- Flèches `◀` / `▶` cliquables pour faire défiler la liste case par case.
-- Liste totale = `backDays` (passés) + 1 (aujourd'hui) + `forwardDays` (futurs).
-- Cases **futures grisées avec petit badge "Pro"** si `tier === "free"` → clic = redirection vers `/abonnements` au lieu de sélection.
-- Cases passées au-delà de la fenêtre du plan également grisées "Pro".
-- Le clic sur une case ouvre **la chronologie de ce jour en dessous** (multi-lignes par commune favorite, exhaustif).
-
-### Vue du jour sélectionné
-
-- Réutilise la logique multi-lanes existante de `DayTimeline` (mode `communes={...}`).
-- Pour chaque commune favorite (ou "quelques villes au pif" pour visiteurs) : une ligne avec coupures + prévisions selon la nature du jour :
-  - **Jour passé** → données de `outage_history`
-  - **Aujourd'hui** → `outages` (live)
-  - **Jour futur** → `forecasts`
-- Bloc "verrou après maintenant" sur l'aujourd'hui pour Free : on autorise jusqu'à 1 heure aprés "maintenant" la journée d'aujourd'hui. Le verrou s'applique aussi aux **jours futurs** via les cases grisées du ruban.
-
-### Fenêtres par plan
-
-
-| Plan                    | Jours passés cliquables                         | Jours futurs cliquables                                                            |
-| ----------------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------- |
-| Visiteur (non connecté) | aujourd'hui + 1 ou 2 jours autour, sans cliquer | uniquement aujourd'hui en aperçu avec les previsions de plus d'une heure vérouillé |
-| Free connecté           | 7                                               | 0 (cases futures grisées "Pro")                                                    |
-| Pro / Essai             | 365                                             | 14                                                                                 |
-| Business                | 1095                                            | 14                                                                                 |
-
+### 4. Les prévisions statistiques sont calculées sur du faux historique
+`generate_forecasts` lit `outage_history` (247 fallback dedans) → patterns détectés sont les patterns du fallback (tous les jours 20h-07h) → prévisions truquées.
 
 ---
 
-## 2. Suppression / fusion sur chaque page
+## Plan de correction — 5 étapes
 
-### Accueil (`src/routes/index.tsx`)
+### Étape 1 : Purger les données polluées (migration SQL)
+- `DELETE FROM outage_history WHERE description LIKE '%créneau standard 20h-07h%'` (247 lignes fallback)
+- `DELETE FROM outages WHERE description LIKE '%créneau standard 20h-07h%'` (toutes les coupures fallback en cours/programmées)
+- `DELETE FROM forecasts WHERE basis LIKE '%fallback déterministe%'` (19 lignes)
+- `DELETE FROM forecasts` complet (on régénérera après backfill propre)
+- `DELETE FROM outages WHERE source = 'scraping' AND external_id LIKE 'smgeag_%'` (les faux positifs du scraper HTML)
 
-- **Supprimer** :
-  - Section "Aujourd'hui en Guadeloupe" (DayTimeline dédiée)
-  - Section "Demain et après ?" (ForecastTeaserLocked / ForecastsUnlockedPreview)
-- **Remplacer par** un unique bloc `<OutageTimeline />` titré "Coupures au fil du temps".
-- Pour visiteur non connecté : la timeline affiche **3 communes au hasard avec comme statut l'eau coupée**  (sélection stable dans le temps via `useMemo` + sample dans `communes`), aucun jour passé / futur cliquable, et un **gros CTA conversion** au-dessus/dessous : "Créez un compte gratuit pour suivre votre commune et voir les 7 derniers jours".
-- Modifier le sous-titre HERO : retirer "timeline horaire" → "carte, frise chronologique, prévisions à 14 jours, et notifications préventives ou alertes par email" (suppression "SMS et WhatsApp" car réservés Business via devis et ajouté notifications préventives).
+### Étape 2 : Désactiver le fallback déterministe
+Dans `scrape_planning.ts` :
+- **Supprimer** l'appel à `persistFallbackPlanning` quand l'IA échoue. Mieux vaut ne rien afficher qu'afficher du faux. On loggera juste l'échec dans `scraper_runs` pour qu'on le voie.
+- Garder la fonction de fallback en commentaire/dead-code n'a aucun intérêt → la supprimer.
 
-### Carte (`src/routes/carte.tsx`)
+### Étape 3 : Durcir le scraper HTML SMGEAG
+Dans `scraper_smgeag.ts`, le parsing actuel ramasse n'importe quel `<p>` ou `<li>` qui contient "réseau". Corrections :
+- Ne garder que les blocs `article` et `.elementor-post` (jeter les `main p`, `main li` génériques).
+- **Exiger une date détectée** (sinon on rejette) — actuellement les items sans date sont insérés avec `now()`.
+- **Exiger une plage horaire** OU une mention explicite de "coupure"/"interruption" (le simple mot "travaux" + commune ne suffit pas).
+- Réduire `reliability_score` à 0.7 (vs 0.95) — ce sont des annonces texte, pas des plannings tabulaires.
 
-- **Supprimer** :
-  - Section "Timeline (historique)/(prévisions)/(aujourd'hui)" + DayPicker actuel
-- **Remplacer par** `<OutageTimeline />` (en mode favoris pour Free/Pro, toutes communes pour Business).
-- Conserver : carte, sidebar "En cours", `ReportBlock`.
-- Conserver `<HistoryPanel />` indépendant (grisé Free, 1 an Pro, 3 ans Business).
+### Étape 4 : Backfill 1 an d'historique réel via l'IA
+Maintenant que les crédits IA sont rechargés :
+- Appeler `/api/public/jobs/backfill-planning` avec `since=2025-04-01` et `maxPosts=80`
+- Cela récupère ~52 plannings hebdo, lance Gemini sur chaque jeu d'images, et insère **les vraies coupures** dans `outage_history` (passé) et `outages`/`forecasts` (semaine en cours + à venir).
+- Estimation : ~50 appels Gemini 2.5 Flash avec 4 images chacun → coût modéré.
+- On loggera tout dans `scraper_runs` pour traçabilité.
 
-### Ma commune (`src/routes/ma-commune.tsx`)
+### Étape 5 : Régénérer les prévisions sur historique propre
+Après le backfill :
+- Appeler `/api/public/jobs/generate-forecasts` → recalcule sur l'historique réel
+- Le scrape planning hebdo cron (déjà en place) maintiendra l'à-jour sans fallback
 
-- **Supprimer** : section "Timeline" actuelle (DayPicker + DayTimeline).
-- **Remplacer par** `<OutageTimeline />` (toujours en mode favoris).
-- Conserver : picker de communes favorites, status cards, `ReportBlock`, `NotificationPreferencesPanel`, `HistoryPanel`, `UpsellCard`.
-
----
-
-## 3. Restriction visiteur (non connecté)
-
-Pages **Carte** et **Ma commune** :
-
-- Si `!user`, afficher un écran "Connectez-vous" plein écran (déjà fait pour `/ma-commune`, à reproduire pour `/carte`) avec :
-  - Titre, courte explication
-  - Boutons "Créer un compte gratuit" et "Se connecter"
-  - Mention "Inscription instantanée, plan gratuit automatique".
-- Vérifier que `signUp` du `AuthProvider` assigne bien le plan `free` par défaut (sinon ajouter un trigger DB ou un insert côté client après signup).
-
-L'**Accueil reste publique** mais tronquée comme décrit en §2.
+### Bonus : Rapport de transparence dans l'UI
+Pour rassurer l'utilisateur quand une donnée vient ou non de la SMGEAG, ajouter un petit badge "Source : SMGEAG officiel" / "Estimation statistique" sur les coupures et prévisions affichées dans `OutageTimeline`. Le composant `SourceBadge.tsx` existe déjà — il suffit de l'utiliser.
 
 ---
 
-## 4. Bloc Historique (inchangé dans son principe)
+## Détails techniques
 
-- Garder `<HistoryPanel />` séparé sur Carte et Ma commune.
-- S'assurer du grisage pour Free (badge Lock + CTA `/abonnements`) — déjà fait, à vérifier.
+**Fichiers modifiés :**
+- `src/server/jobs/scrape_planning.ts` — supprimer `persistFallbackPlanning` + retirer ses appels dans `scrapePlanning` et `backfillPlanningHistory`
+- `src/server/jobs/scraper_smgeag.ts` — durcir le parsing (sélecteurs + filtres date/heure)
+- `src/components/outages/OutageTimeline.tsx` — ajouter `<SourceBadge>` à chaque ligne de coupure/prévision
+- Nouvelle migration SQL pour la purge
+
+**Actions runtime (après déploiement) :**
+1. Migration SQL exécutée automatiquement → DB nettoyée
+2. Appel manuel `POST /api/public/jobs/backfill-planning` body `{"since":"2025-04-01","maxPosts":80}` → backfill 1 an
+3. Appel manuel `GET /api/public/jobs/generate-forecasts` → prévisions recalculées
+4. Le cron quotidien `scrape-planning` continuera à maintenir la semaine en cours
+
+**Risques :**
+- Le backfill consomme du crédit Lovable AI (~50 appels Gemini Flash). Si le crédit retombe à zéro, certains plannings échoueront silencieusement → on les retentera manuellement.
+- Si certains posts SMGEAG ont des images de mauvaise qualité, l'IA peut rater des lignes → c'est OK, mieux vaut un trou qu'une donnée fausse.
+
+**Garanties :**
+- Plus aucune donnée "20h-07h générique" ne sera créée
+- Toutes les coupures affichées viendront soit de l'IA lisant un planning officiel, soit du scraping HTML strict, soit de l'historique IA presse
+- Les prévisions seront marquées clairement (officiel SMGEAG vs statistique)
 
 ---
 
-## 5. Détails techniques (résumé)
+## Question rapide avant exécution
 
-**Nouveau fichier** : `src/components/outages/OutageTimeline.tsx`
-
-- Props : `tier`, `mode: "visitor" | "favorites" | "all"`, `favoriteCommunes`, `allCommunes`, `visibleDays?: number` (par défaut 3, responsive).
-- Gère seul : ruban scrollable, état du jour sélectionné, fetch combiné (history/outages/forecasts) selon le jour, rendu via `DayTimeline` existant en mode multi-lignes.
-- Cas vide visiteur : 3 communes échantillonnées + overlay CTA "Créez un compte".
-
-**Refactor** : extraire `DayPicker` actuel pour évoluer vers ruban à fenêtre glissante avec flèches (ou nouveau `DayRibbon`, garder l'ancien si encore utilisé ailleurs).
-
-**Pages modifiées** : `index.tsx`, `carte.tsx`, `ma-commune.tsx` — retraits + import du nouveau composant.
-
-`**SiteHeader**` : optionnel, masquer "Carte" / "Ma commune" pour visiteurs ou laisser et rediriger vers `/connexion` (préférence : laisser visible, redirection sur la page).
-
-**Validation** : `tsc --noEmit` après refactor.
-
----
-
-## Ce qui n'est PAS touché
-
-- Le moteur de prévisions (`generate_forecasts.ts`)
-- Le schéma DB
-- Les jobs de scraping
-- Les notifications, abonnements, paiements
+Veux-tu que le backfill remonte à **avril 2025 (1 an)** ou plus loin (jusqu'à fin 2024, ~80 semaines) ? Plus on remonte, mieux les patterns statistiques fonctionneront, mais ça consomme plus de crédit IA. Je propose **1 an** par défaut comme bon compromis. Si tu veux plus court (6 mois) ou plus long, dis-le-moi avant de cliquer Approve, sinon je pars sur 1 an.

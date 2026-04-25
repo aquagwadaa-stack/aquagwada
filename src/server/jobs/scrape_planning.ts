@@ -16,7 +16,6 @@ const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const DEFAULT_BACKFILL_SINCE = "2025-10-01";
 
 const OFFICIAL_BASIS_PREFIX = "Planning officiel SMGEAG";
-const FALLBACK_BASIS_PREFIX = "Planning officiel SMGEAG (fallback déterministe)";
 
 type CommuneRow = { id: string; name: string; slug: string };
 
@@ -47,7 +46,6 @@ type PersistStats = {
   skipped: number;
   errors: number;
   aiFailed: number;
-  fallbackUsed: number;
 };
 
 function norm(s: string): string {
@@ -141,108 +139,6 @@ function communesCoveredByPostImages(post: WPPost & { imageUrls: string[] }, com
     for (const slug of ZONE_TO_COMMUNES[zone] ?? []) slugs.add(slug);
   }
   return communes.filter((c) => slugs.has(c.slug)).map((c) => c.id);
-}
-
-/** Construit un "événement déterministe" par jour×commune pour la fenêtre 20:00→07:00, marqué approximate. */
-async function persistFallbackPlanning(
-  post: WPPost & { imageUrls: string[] },
-  communes: CommuneRow[],
-  stats: PersistStats,
-) {
-  const range = extractWeekRange(post);
-  if (!range) return;
-  const communeIds = communesCoveredByPostImages(post, communes);
-  if (communeIds.length === 0) return;
-
-  const nowMs = Date.now();
-  const title = decodeHtml(post.title.rendered);
-  const basis = `${FALLBACK_BASIS_PREFIX} · ${title}`.slice(0, 500);
-
-  // Itère jour par jour entre range.start et range.end
-  for (let t = range.start.getTime(); t <= range.end.getTime(); t += 24 * 60 * 60_000) {
-    const dayStart = new Date(t);
-    // Fenêtre standard SMGEAG : fermeture 20h → ouverture 7h le lendemain
-    const startsAt = new Date(dayStart); startsAt.setUTCHours(20, 0, 0, 0);
-    const endsAt = new Date(dayStart); endsAt.setUTCDate(endsAt.getUTCDate() + 1); endsAt.setUTCHours(7, 0, 0, 0);
-    const durationMinutes = Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000);
-    for (const communeId of communeIds) {
-      const externalId = hashId(`fallback|${post.id}|${communeId}|${startsAt.toISOString().slice(0, 10)}`);
-      const isPast = endsAt.getTime() < nowMs;
-      if (isPast) {
-        const row = {
-          commune_id: communeId,
-          source: "official" as const,
-          source_url: post.link,
-          external_id: externalId,
-          starts_at: startsAt.toISOString(),
-          ends_at: endsAt.toISOString(),
-          duration_minutes: durationMinutes,
-          description: `Planning hebdomadaire SMGEAG (créneau standard 20h-07h, secteurs non détaillés)`,
-          cause: "tour d'eau",
-          sector: null,
-          reliability_score: 0.85,
-          confidence_score: 0.6,
-          time_precision: "approximate" as const,
-        };
-        const { data: existing } = await supabaseAdmin
-          .from("outage_history").select("id").eq("external_id", externalId).maybeSingle();
-        const { error } = existing
-          ? await supabaseAdmin.from("outage_history").update(row).eq("id", existing.id)
-          : await supabaseAdmin.from("outage_history").insert(row);
-        if (error) stats.errors++;
-        else if (existing) stats.historyUpdated++;
-        else stats.historyInserted++;
-      } else {
-        const status = startsAt.getTime() <= nowMs && endsAt.getTime() >= nowMs ? "ongoing" : "scheduled";
-        const row = {
-          commune_id: communeId,
-          source: "official" as const,
-          source_url: post.link,
-          external_id: externalId,
-          starts_at: startsAt.toISOString(),
-          ends_at: endsAt.toISOString(),
-          estimated_duration_minutes: durationMinutes,
-          description: `Planning hebdomadaire SMGEAG (créneau standard 20h-07h, secteurs non détaillés)`,
-          cause: "tour d'eau",
-          sector: null,
-          reliability_score: 0.85,
-          confidence_score: 0.6,
-          confidence_source_weight: 1.0,
-          is_estimated: true,
-          time_precision: "approximate" as const,
-          status: status as "scheduled" | "ongoing",
-        };
-        const { data: existing } = await supabaseAdmin
-          .from("outages").select("id").eq("external_id", externalId).maybeSingle();
-        const r = existing
-          ? await supabaseAdmin.from("outages").update({ ...row, updated_at: new Date().toISOString() }).eq("id", existing.id)
-          : await supabaseAdmin.from("outages").insert(row);
-        if (r.error) stats.errors++;
-        else if (existing) stats.outagesUpdated++;
-        else stats.outagesInserted++;
-
-        if (startsAt.getTime() >= new Date().setUTCHours(0, 0, 0, 0)) {
-          const { error } = await supabaseAdmin.from("forecasts").upsert({
-            commune_id: communeId,
-            forecast_date: startsAt.toISOString().slice(0, 10),
-            window_start: "20:00:00",
-            window_end: "07:00:00",
-            expected_duration_minutes: durationMinutes,
-            probability: 0.9,
-            confidence: 0.75,
-            trend: "stable",
-            basis,
-            sample_size: 1,
-            day_of_week_signal: 0,
-          }, { onConflict: "commune_id,forecast_date,window_start" });
-          if (error) stats.errors++;
-          else stats.forecastsUpserted++;
-        }
-      }
-      stats.items++;
-    }
-  }
-  stats.fallbackUsed++;
 }
 
 function cleanJson(content: string): string {
@@ -427,7 +323,6 @@ async function persistPlanningItems(
     skipped: 0,
     errors: 0,
     aiFailed: 0,
-    fallbackUsed: 0,
   };
 
   const nowMs = Date.now();
@@ -566,7 +461,6 @@ function mergeStats(target: PersistStats, source: PersistStats) {
   target.skipped += source.skipped;
   target.errors += source.errors;
   target.aiFailed += source.aiFailed;
-  target.fallbackUsed += source.fallbackUsed;
 }
 
 export async function scrapePlanning(): Promise<{
@@ -585,7 +479,7 @@ export async function scrapePlanning(): Promise<{
   const list = (communes ?? []) as CommuneRow[];
 
   const posts = await fetchPlanningPosts({ maxPosts: 3 });
-  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0, fallbackUsed: 0 };
+  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0 };
   let images = 0;
 
   for (const post of posts) {
@@ -601,10 +495,8 @@ export async function scrapePlanning(): Promise<{
     try {
       const stats = await persistPlanningItems(post, items, list);
       if (aiFailed) stats.aiFailed++;
-      // Si l'IA a échoué (ex: 402 crédits) ou n'a rien produit, on tente un fallback déterministe.
-      if (aiFailed || items.length === 0) {
-        await persistFallbackPlanning(post, list, stats);
-      }
+      // Si l'IA a échoué ou n'a rien produit, on n'écrit RIEN.
+      // Mieux vaut un trou (loggé dans scraper_runs) qu'une donnée fausse.
       mergeStats(totals, stats);
     } catch (e) {
       totals.errors++;
@@ -623,7 +515,7 @@ export async function scrapePlanning(): Promise<{
     items_found: totals.items,
     items_inserted: inserted,
     items_updated: updated,
-    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed} fallback=${totals.fallbackUsed}`,
+    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed}`,
   });
 
   return { ok: totals.errors === 0, posts: posts.length, images, forecasts_extracted: totals.items, inserted, updated, skipped: totals.skipped, errors: totals.errors };
@@ -651,7 +543,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
   const list = (communes ?? []) as CommuneRow[];
 
   const posts = await fetchPlanningPosts({ since, maxPosts });
-  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0, fallbackUsed: 0 };
+  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0 };
   let images = 0;
 
   for (const post of posts) {
@@ -667,9 +559,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
     try {
       const stats = await persistPlanningItems(post, items, list);
       if (aiFailed) stats.aiFailed++;
-      if (aiFailed || items.length === 0) {
-        await persistFallbackPlanning(post, list, stats);
-      }
+      // Si l'IA a échoué, on saute ce post sans rien écrire.
       mergeStats(totals, stats);
     } catch (e) {
       totals.errors++;
@@ -686,7 +576,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
     items_found: totals.items,
     items_inserted: totals.historyInserted + totals.outagesInserted + totals.forecastsUpserted,
     items_updated: totals.historyUpdated + totals.outagesUpdated,
-    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed} fallback=${totals.fallbackUsed}`,
+    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed}`,
   });
 
   return {
