@@ -264,20 +264,35 @@ async function extractItemsFromPost(post: WPPost & { imageUrls: string[] }, comm
 
   const title = decodeHtml(post.title.rendered);
   const communeNames = communes.map((c) => c.name).join(", ");
-  const prompt = `Tu lis des images officielles SMGEAG de planning hebdomadaire des tours d'eau en Guadeloupe.
+  const prompt = `Tu lis l'image officielle SMGEAG du planning hebdomadaire des tours d'eau en Guadeloupe.
 Article: ${title}
 URL: ${post.link}
 Communes valides: ${communeNames}.
 
-Retourne un JSON STRICT sous cette forme:
-{"items":[{"commune_name":"Nom exact d'une commune valide","sector":"zone/secteur si visible sinon null","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","description":"Fermeture HH:MM, ouverture HH:MM"}]}
+IMPORTANT : l'image contient une CARTE de Guadeloupe entourée de PLUSIEURS BLOCS de texte colorés (jaune, bleu, rose, vert, violet, orange, rouge…). Chaque bloc commence par un nom de commune ou de zone EN MAJUSCULES (ex: "LES ABYMES", "CAPESTERRE B/E 1", "SAINTE-ANNE", "LE MOULE"…), suivi d'une liste de quartiers, puis d'une ligne en bleu/rouge précisant les jours et l'horaire (ex: "Lundi / mercredi / vendredi / dimanche de 20h à 7h").
 
-Règles impératives:
-- Extrais uniquement les lignes de coupure/tour d'eau des tableaux de planning, pas les cartes de zones.
-- Si une cellule mentionne plusieurs communes, crée un item par commune.
-- Utilise uniquement les noms de la liste. Développe: CBE = Capesterre-Belle-Eau, Abymes = Les Abymes, Gosier = Le Gosier, Moule = Le Moule, Les Saintes = Terre-de-Haut et Terre-de-Bas si non précisé.
-- Les dates doivent être celles de la semaine du planning, au format YYYY-MM-DD.
-- Si l'ouverture est le lendemain (ex: fermeture 20:00, ouverture 07:00), garde end="07:00".`;
+Tu DOIS parcourir SYSTÉMATIQUEMENT TOUS les blocs colorés sans en oublier un seul. Ne te limite pas à 5 ou 6 entrées : un planning typique contient 12 à 18 blocs.
+
+Pour chaque bloc, génère UN item PAR JOUR de la semaine planifiée. Exemple : "Lundi / mercredi / vendredi / dimanche de 20h à 7h" sur la semaine du 20 au 26 avril 2026 = 4 items (20, 22, 24, 26 avril) avec start="20:00" end="07:00".
+
+Retourne un JSON STRICT sous cette forme :
+{"items":[{"commune_name":"Nom exact d'une commune valide","sector":"intitulé du bloc (ex: B/E 1, B/E 4, Bloc 1, ZONE …) ou null","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","description":"Fermeture HH:MM, ouverture HH:MM"}]}
+
+Règles impératives :
+- Utilise uniquement les noms de la liste "Communes valides". Mappings :
+  · CBE / Capesterre B/E (1, 2, 3, 4) = Capesterre-Belle-Eau
+  · Abymes / Pointe-à-Pitre / Abymes = Les Abymes ET Pointe-à-Pitre (deux items)
+  · Gosier = Le Gosier ; Moule = Le Moule ; Goyave = Goyave ; Gourbeyre = Gourbeyre
+  · Saint-Claude / St Claude = Saint-Claude ; Sainte-Rose = Sainte-Rose
+  · Sainte-Anne = Sainte-Anne ; Saint-François = Saint-François
+  · Morne-à-l'Eau (1 et 2) = Morne-à-l'Eau ; Trois-Rivières = Trois-Rivières
+  · Les Saintes = Terre-de-Haut ET Terre-de-Bas (deux items)
+  · Petit-Bourg, Baie-Mahault, Lamentin, Pointe-Noire, Bouillante, Vieux-Habitants, Baillif, Basse-Terre, Vieux-Fort, Anse-Bertrand, Port-Louis, Petit-Canal, La Désirade, Deshaies, Grand-Bourg, Saint-Louis, Capesterre-de-Marie-Galante : si présentes au planning, ajoute-les également.
+- Si un bloc lie plusieurs communes (ex: "Pointe-à-Pitre / Abymes"), crée un item PAR commune.
+- Les dates doivent appartenir à la semaine indiquée dans le titre, au format YYYY-MM-DD.
+- Si l'ouverture est le lendemain (fermeture 20:00 → ouverture 07:00), garde end="07:00" (le système gère le passage à J+1).
+- Si le bloc dit "Tous les jours de Xh à Yh", génère 7 items (un par jour de la semaine du planning).
+- N'invente JAMAIS de communes ou d'horaires non visibles. Mais ne saute pas un bloc visible.`;
 
   const content = [
     { type: "text", text: prompt },
@@ -288,7 +303,10 @@ Règles impératives:
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      // gemini-2.5-pro = meilleure lecture des images denses multicolores
+      // (planning SMGEAG : ~15 blocs colorés, petites polices). Flash ratait
+      // la moitié des blocs.
+      model: "google/gemini-2.5-pro",
       messages: [{ role: "user", content }],
       response_format: { type: "json_object" },
     }),
