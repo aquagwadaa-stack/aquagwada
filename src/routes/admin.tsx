@@ -281,6 +281,7 @@ function AdminContent() {
           <div className="grid gap-2 sm:grid-cols-2 mb-4">
             <JobButton slug="scrape-smgeag" label="SMGEAG (live)" running={running} onRun={trigger} />
             <JobButton slug="scrape-planning" label="Planning hebdo" running={running} onRun={trigger} />
+            <JobButton slug="backfill-planning" label="Backfill plannings SMGEAG" running={running} onRun={trigger} />
             <JobButton slug="scrape-ai-history" label="Historique IA (long)" running={running} onRun={trigger} />
             <JobButton slug="generate-forecasts" label="Générer prévisions stat." running={running} onRun={trigger} />
             <JobButton slug="cleanup-history" label="Nettoyage historique" running={running} onRun={trigger} />
