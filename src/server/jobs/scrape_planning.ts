@@ -26,6 +26,12 @@ type AIForecast = {
   trend: "stable" | "rising" | "falling";
 };
 
+function normalizeTrend(trend: AIForecast["trend"] | string | null | undefined): "improving" | "stable" | "worsening" {
+  if (trend === "rising" || trend === "worsening") return "worsening";
+  if (trend === "falling" || trend === "improving") return "improving";
+  return "stable";
+}
+
 function norm(s: string): string {
   if (typeof s !== "string" || !s) return "";
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
@@ -139,7 +145,7 @@ export async function scrapePlanning(): Promise<{ ok: boolean; pages: number; fo
         expected_duration_minutes: f.expected_duration_minutes,
         probability: 0.95, // planning officiel
         confidence: 0.95,
-        trend: f.trend ?? "stable",
+        trend: normalizeTrend(f.trend),
         basis: f.basis,
         sample_size: 1,
         day_of_week_signal: 0,
