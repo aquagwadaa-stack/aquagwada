@@ -19,6 +19,8 @@ import { Route as AProposRouteImport } from './routes/a-propos'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
 import { Route as ApiPublicJobsScrapeSmgeagRouteImport } from './routes/api.public.jobs.scrape-smgeag'
+import { Route as ApiPublicJobsScrapePlanningRouteImport } from './routes/api.public.jobs.scrape-planning'
+import { Route as ApiPublicJobsScrapeAiHistoryRouteImport } from './routes/api.public.jobs.scrape-ai-history'
 import { Route as ApiPublicJobsProcessReportsRouteImport } from './routes/api.public.jobs.process-reports'
 import { Route as ApiPublicJobsGenerateForecastsRouteImport } from './routes/api.public.jobs.generate-forecasts'
 import { Route as ApiPublicJobsDispatchNotificationsRouteImport } from './routes/api.public.jobs.dispatch-notifications'
@@ -76,6 +78,18 @@ const ApiPublicJobsScrapeSmgeagRoute =
     path: '/api/public/jobs/scrape-smgeag',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiPublicJobsScrapePlanningRoute =
+  ApiPublicJobsScrapePlanningRouteImport.update({
+    id: '/api/public/jobs/scrape-planning',
+    path: '/api/public/jobs/scrape-planning',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicJobsScrapeAiHistoryRoute =
+  ApiPublicJobsScrapeAiHistoryRouteImport.update({
+    id: '/api/public/jobs/scrape-ai-history',
+    path: '/api/public/jobs/scrape-ai-history',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicJobsProcessReportsRoute =
   ApiPublicJobsProcessReportsRouteImport.update({
     id: '/api/public/jobs/process-reports',
@@ -121,6 +135,8 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/dispatch-notifications': typeof ApiPublicJobsDispatchNotificationsRoute
   '/api/public/jobs/generate-forecasts': typeof ApiPublicJobsGenerateForecastsRoute
   '/api/public/jobs/process-reports': typeof ApiPublicJobsProcessReportsRoute
+  '/api/public/jobs/scrape-ai-history': typeof ApiPublicJobsScrapeAiHistoryRoute
+  '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
@@ -138,6 +154,8 @@ export interface FileRoutesByTo {
   '/api/public/jobs/dispatch-notifications': typeof ApiPublicJobsDispatchNotificationsRoute
   '/api/public/jobs/generate-forecasts': typeof ApiPublicJobsGenerateForecastsRoute
   '/api/public/jobs/process-reports': typeof ApiPublicJobsProcessReportsRoute
+  '/api/public/jobs/scrape-ai-history': typeof ApiPublicJobsScrapeAiHistoryRoute
+  '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
@@ -156,6 +174,8 @@ export interface FileRoutesById {
   '/api/public/jobs/dispatch-notifications': typeof ApiPublicJobsDispatchNotificationsRoute
   '/api/public/jobs/generate-forecasts': typeof ApiPublicJobsGenerateForecastsRoute
   '/api/public/jobs/process-reports': typeof ApiPublicJobsProcessReportsRoute
+  '/api/public/jobs/scrape-ai-history': typeof ApiPublicJobsScrapeAiHistoryRoute
+  '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
 }
@@ -175,6 +195,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/dispatch-notifications'
     | '/api/public/jobs/generate-forecasts'
     | '/api/public/jobs/process-reports'
+    | '/api/public/jobs/scrape-ai-history'
+    | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
   fileRoutesByTo: FileRoutesByTo
@@ -192,6 +214,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/dispatch-notifications'
     | '/api/public/jobs/generate-forecasts'
     | '/api/public/jobs/process-reports'
+    | '/api/public/jobs/scrape-ai-history'
+    | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
   id:
@@ -209,6 +233,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/dispatch-notifications'
     | '/api/public/jobs/generate-forecasts'
     | '/api/public/jobs/process-reports'
+    | '/api/public/jobs/scrape-ai-history'
+    | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
   fileRoutesById: FileRoutesById
@@ -227,6 +253,8 @@ export interface RootRouteChildren {
   ApiPublicJobsDispatchNotificationsRoute: typeof ApiPublicJobsDispatchNotificationsRoute
   ApiPublicJobsGenerateForecastsRoute: typeof ApiPublicJobsGenerateForecastsRoute
   ApiPublicJobsProcessReportsRoute: typeof ApiPublicJobsProcessReportsRoute
+  ApiPublicJobsScrapeAiHistoryRoute: typeof ApiPublicJobsScrapeAiHistoryRoute
+  ApiPublicJobsScrapePlanningRoute: typeof ApiPublicJobsScrapePlanningRoute
   ApiPublicJobsScrapeSmgeagRoute: typeof ApiPublicJobsScrapeSmgeagRoute
   ApiPublicOutagesIngestRoute: typeof ApiPublicOutagesIngestRoute
 }
@@ -303,6 +331,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicJobsScrapeSmgeagRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/scrape-planning': {
+      id: '/api/public/jobs/scrape-planning'
+      path: '/api/public/jobs/scrape-planning'
+      fullPath: '/api/public/jobs/scrape-planning'
+      preLoaderRoute: typeof ApiPublicJobsScrapePlanningRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/scrape-ai-history': {
+      id: '/api/public/jobs/scrape-ai-history'
+      path: '/api/public/jobs/scrape-ai-history'
+      fullPath: '/api/public/jobs/scrape-ai-history'
+      preLoaderRoute: typeof ApiPublicJobsScrapeAiHistoryRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/jobs/process-reports': {
       id: '/api/public/jobs/process-reports'
       path: '/api/public/jobs/process-reports'
@@ -356,6 +398,8 @@ const rootRouteChildren: RootRouteChildren = {
     ApiPublicJobsDispatchNotificationsRoute,
   ApiPublicJobsGenerateForecastsRoute: ApiPublicJobsGenerateForecastsRoute,
   ApiPublicJobsProcessReportsRoute: ApiPublicJobsProcessReportsRoute,
+  ApiPublicJobsScrapeAiHistoryRoute: ApiPublicJobsScrapeAiHistoryRoute,
+  ApiPublicJobsScrapePlanningRoute: ApiPublicJobsScrapePlanningRoute,
   ApiPublicJobsScrapeSmgeagRoute: ApiPublicJobsScrapeSmgeagRoute,
   ApiPublicOutagesIngestRoute: ApiPublicOutagesIngestRoute,
 }
