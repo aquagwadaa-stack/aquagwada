@@ -151,6 +151,9 @@ export function DayTimeline({
   communes,
   emptyCtaTo = "/ma-commune",
   emptyCtaLabel = "Ajouter votre commune",
+  emptyTitle = "Ajoutez votre commune favorite pour voir vos timelines",
+  emptyDescription = "Une ligne par commune, vue d'ensemble en un coup d'œil.",
+  emptyShowCta = true,
 }: {
   date: Date;
   outages: Outage[];
@@ -176,6 +179,9 @@ export function DayTimeline({
   communes?: Array<{ id: string; name: string }>;
   emptyCtaTo?: string;
   emptyCtaLabel?: string;
+  emptyTitle?: string;
+  emptyDescription?: string;
+  emptyShowCta?: boolean;
 }) {
   const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
@@ -221,14 +227,16 @@ export function DayTimeline({
       {multiMode && communes!.length === 0 ? (
         <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-8 text-center">
           <MapPin className="h-6 w-6 mx-auto text-primary mb-2" />
-          <p className="text-sm font-medium">Ajoutez votre commune favorite pour voir vos timelines</p>
-          <p className="text-xs text-muted-foreground mt-1 mb-4">Une ligne par commune, vue d'ensemble en un coup d'œil.</p>
-          <Link
-            to={emptyCtaTo}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
-          >
-            <Plus className="h-3.5 w-3.5" /> {emptyCtaLabel}
-          </Link>
+          <p className="text-sm font-medium">{emptyTitle}</p>
+          <p className="text-xs text-muted-foreground mt-1 mb-4">{emptyDescription}</p>
+          {emptyShowCta && (
+            <Link
+              to={emptyCtaTo}
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+            >
+              <Plus className="h-3.5 w-3.5" /> {emptyCtaLabel}
+            </Link>
+          )}
         </div>
       ) : (
       <div className="relative">
