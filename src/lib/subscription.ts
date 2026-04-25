@@ -16,8 +16,8 @@ export const PLAN_CAPS: Record<Tier, {
   quoteOnly: boolean;
 }> = {
   free:     { maxCommunes: 1,   forecastDays: 0,  historyDays: 7,    pushEnabled: true, smsEnabled: false, whatsappEnabled: false, preventiveNotifications: false, apiAccess: false, priceFromEur: 0,    quoteOnly: false },
-  pro:      { maxCommunes: 5,   forecastDays: 14, historyDays: 180,  pushEnabled: true, smsEnabled: false, whatsappEnabled: false, preventiveNotifications: true,  apiAccess: false, priceFromEur: 5.99, quoteOnly: false },
-  business: { maxCommunes: 999, forecastDays: 14, historyDays: 1825, pushEnabled: true, smsEnabled: true,  whatsappEnabled: true,  preventiveNotifications: true,  apiAccess: true,  priceFromEur: 25,   quoteOnly: true  },
+  pro:      { maxCommunes: 5,   forecastDays: 14, historyDays: 365,  pushEnabled: true, smsEnabled: false, whatsappEnabled: false, preventiveNotifications: true,  apiAccess: false, priceFromEur: 5.99, quoteOnly: false },
+  business: { maxCommunes: 999, forecastDays: 14, historyDays: 1095, pushEnabled: true, smsEnabled: true,  whatsappEnabled: true,  preventiveNotifications: true,  apiAccess: true,  priceFromEur: 25,   quoteOnly: true  },
 };
 
 export function canSeeForecasts(tier: Tier): boolean {
