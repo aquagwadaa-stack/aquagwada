@@ -14,6 +14,7 @@ import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as ConfidentialiteRouteImport } from './routes/confidentialite'
 import { Route as CguRouteImport } from './routes/cgu'
 import { Route as CarteRouteImport } from './routes/carte'
+import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AbonnementsRouteImport } from './routes/abonnements'
 import { Route as AProposRouteImport } from './routes/a-propos'
 import { Route as IndexRouteImport } from './routes/index'
@@ -50,6 +51,11 @@ const CguRoute = CguRouteImport.update({
 const CarteRoute = CarteRouteImport.update({
   id: '/carte',
   path: '/carte',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRoute = AdminRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AbonnementsRoute = AbonnementsRouteImport.update({
@@ -125,6 +131,7 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/a-propos': typeof AProposRoute
   '/abonnements': typeof AbonnementsRoute
+  '/admin': typeof AdminRoute
   '/carte': typeof CarteRoute
   '/cgu': typeof CguRoute
   '/confidentialite': typeof ConfidentialiteRoute
@@ -144,6 +151,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/a-propos': typeof AProposRoute
   '/abonnements': typeof AbonnementsRoute
+  '/admin': typeof AdminRoute
   '/carte': typeof CarteRoute
   '/cgu': typeof CguRoute
   '/confidentialite': typeof ConfidentialiteRoute
@@ -164,6 +172,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/a-propos': typeof AProposRoute
   '/abonnements': typeof AbonnementsRoute
+  '/admin': typeof AdminRoute
   '/carte': typeof CarteRoute
   '/cgu': typeof CguRoute
   '/confidentialite': typeof ConfidentialiteRoute
@@ -185,6 +194,7 @@ export interface FileRouteTypes {
     | '/'
     | '/a-propos'
     | '/abonnements'
+    | '/admin'
     | '/carte'
     | '/cgu'
     | '/confidentialite'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/'
     | '/a-propos'
     | '/abonnements'
+    | '/admin'
     | '/carte'
     | '/cgu'
     | '/confidentialite'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/'
     | '/a-propos'
     | '/abonnements'
+    | '/admin'
     | '/carte'
     | '/cgu'
     | '/confidentialite'
@@ -243,6 +255,7 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   AProposRoute: typeof AProposRoute
   AbonnementsRoute: typeof AbonnementsRoute
+  AdminRoute: typeof AdminRoute
   CarteRoute: typeof CarteRoute
   CguRoute: typeof CguRoute
   ConfidentialiteRoute: typeof ConfidentialiteRoute
@@ -294,6 +307,13 @@ declare module '@tanstack/react-router' {
       path: '/carte'
       fullPath: '/carte'
       preLoaderRoute: typeof CarteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/abonnements': {
@@ -387,6 +407,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   AProposRoute: AProposRoute,
   AbonnementsRoute: AbonnementsRoute,
+  AdminRoute: AdminRoute,
   CarteRoute: CarteRoute,
   CguRoute: CguRoute,
   ConfidentialiteRoute: ConfidentialiteRoute,
