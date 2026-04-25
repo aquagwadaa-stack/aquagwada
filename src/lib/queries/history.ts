@@ -38,3 +38,18 @@ export async function fetchHistory(opts: {
   if (error) throw error;
   return { rows: (data ?? []) as unknown as HistoryEntry[], total: count ?? 0 };
 }
+
+/** Historique dans une fenêtre précise, pour alimenter les timelines multi-communes. */
+export async function fetchHistoryRange(fromIso: string, toIso: string, communeIds?: string[]): Promise<HistoryEntry[]> {
+  let q = supabase
+    .from("outage_history")
+    .select("*, commune:communes(name,slug)")
+    .lte("starts_at", toIso)
+    .gte("ends_at", fromIso)
+    .order("starts_at", { ascending: true });
+
+  if (communeIds && communeIds.length) q = q.in("commune_id", communeIds);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []) as unknown as HistoryEntry[];
+}
