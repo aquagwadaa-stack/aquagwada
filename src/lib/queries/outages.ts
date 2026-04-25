@@ -21,20 +21,24 @@ function normalizeOutageStatus(outage: Outage): Outage {
   const start = new Date(outage.starts_at).getTime();
   const end = outage.ends_at ? new Date(outage.ends_at).getTime() : null;
 
-  if (outage.status === "cancelled" || outage.status === "resolved") return outage;
-  if (end !== null && end < now) return { ...outage, status: "resolved" };
+  const withDefaultEstimate = outage.ends_at || outage.estimated_duration_minutes
+    ? outage
+    : { ...outage, estimated_duration_minutes: 180 };
+
+  if (outage.status === "cancelled" || outage.status === "resolved") return withDefaultEstimate;
+  if (end !== null && end < now) return { ...withDefaultEstimate, status: "resolved" };
   if (start <= now && (end === null || end >= now) && outage.status === "scheduled") {
-    return { ...outage, status: "ongoing" };
+    return { ...withDefaultEstimate, status: "ongoing" };
   }
-  return outage;
+  return withDefaultEstimate;
 }
 
 export async function fetchOutagesWindow(fromIso: string, toIso: string, communeIds?: string[]): Promise<Outage[]> {
   let q = supabase
     .from("outages")
     .select("*, commune:communes(name,slug)")
-    .gte("starts_at", fromIso)
     .lte("starts_at", toIso)
+    .or(`ends_at.gte.${fromIso},ends_at.is.null,status.eq.ongoing`)
     .order("starts_at", { ascending: true });
   if (communeIds && communeIds.length) q = q.in("commune_id", communeIds);
   const { data, error } = await q;
