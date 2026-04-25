@@ -15,8 +15,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 const HISTORY_DAYS_LONG = 365 * 3;     // jusqu'à 3 ans
 const HISTORY_DAYS_RECENT = 60;         // pour calcul de tendance
 const FORECAST_DAYS = 14;
-const MIN_SAMPLE_FOR_PREDICTION = 4;
-const MIN_PROBABILITY_KEEP = 0.05;
+const MIN_SAMPLE_FOR_PREDICTION = 1;
+const MIN_PROBABILITY_KEEP = 0.01;
 
 type HistRow = {
   commune_id: string;
@@ -174,9 +174,12 @@ export async function generateForecasts(): Promise<{ generated: number; communes
     // Volume pondéré : signalements users comptent moins
     const weightedVolume = events.reduce((s, e) => s + e.weight, 0);
     const uniqueDays = new Set(events.map((e) => e.starts_at.slice(0, 10))).size;
-    const observedSpan = Math.min(HISTORY_DAYS_LONG, Math.max(30, (Date.now() - new Date(events[0].starts_at).getTime()) / 86400_000));
+    const observedSpan = Math.min(HISTORY_DAYS_LONG, Math.max(7, (Date.now() - new Date(events[0].starts_at).getTime()) / 86400_000));
     // Mélange : densité brute (jours uniques) × facteur volume pondéré
-    const baseProbability = Math.min(0.95, (uniqueDays / observedSpan) * Math.min(1.5, 0.6 + weightedVolume / Math.max(1, events.length)));
+    const baseProbability = Math.max(
+      0.06,
+      Math.min(0.95, (uniqueDays / observedSpan) * Math.min(1.5, 0.6 + weightedVolume / Math.max(1, events.length)))
+    );
 
     if (baseProbability < MIN_PROBABILITY_KEEP) continue;
 
