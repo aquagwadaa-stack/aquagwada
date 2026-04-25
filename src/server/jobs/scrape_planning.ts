@@ -27,11 +27,14 @@ type AIForecast = {
 };
 
 function norm(s: string): string {
+  if (typeof s !== "string" || !s) return "";
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 }
 
 function findCommuneId(name: string, communes: CommuneRow[]): string | null {
+  if (!name) return null;
   const target = norm(name);
+  if (!target) return null;
   for (const c of communes) if (norm(c.name) === target) return c.id;
   for (const c of communes) {
     const cn = norm(c.name);
