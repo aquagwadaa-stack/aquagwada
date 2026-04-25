@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { fetchHistory, type HistoryEntry } from "@/lib/queries/history";
 import { PLAN_CAPS, type Tier } from "@/lib/subscription";
-import { History, Lock, Calendar } from "lucide-react";
+import { History, Lock, Calendar, MapPin, Activity } from "lucide-react";
 import { formatDuration } from "@/lib/format";
 
 /**
@@ -28,8 +28,23 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
 
   const labelDuree =
     tier === "free" ? "7 derniers jours"
-      : tier === "pro" ? "1 an d'historique"
+      : tier === "pro" ? "6 mois d'historique"
         : "5 ans d'historique";
+
+  // Stats agrégées rapides
+  const stats = (() => {
+    if (rows.length === 0) return null;
+    const communesSet = new Set(rows.map((r) => r.commune_id));
+    const totalMin = rows.reduce((s, r) => s + (r.duration_minutes || 0), 0);
+    const oldest = rows[rows.length - 1]?.starts_at;
+    const newest = rows[0]?.starts_at;
+    return {
+      communes: communesSet.size,
+      totalMin,
+      oldest: oldest ? new Date(oldest) : null,
+      newest: newest ? new Date(newest) : null,
+    };
+  })();
 
   return (
     <section className="rounded-2xl border border-border bg-card p-5 shadow-soft space-y-4">
@@ -43,6 +58,27 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
         </span>
       </div>
 
+      {stats && (
+        <div className="grid grid-cols-3 gap-2 text-xs">
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <div className="flex items-center gap-1 text-muted-foreground"><Activity className="h-3 w-3" /> Coupures</div>
+            <div className="mt-0.5 font-semibold text-foreground">{total}</div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <div className="flex items-center gap-1 text-muted-foreground"><MapPin className="h-3 w-3" /> Communes</div>
+            <div className="mt-0.5 font-semibold text-foreground">{stats.communes}</div>
+          </div>
+          <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
+            <div className="flex items-center gap-1 text-muted-foreground"><Calendar className="h-3 w-3" /> Période</div>
+            <div className="mt-0.5 font-semibold text-foreground">
+              {stats.oldest && stats.newest
+                ? `${stats.oldest.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })} → ${stats.newest.toLocaleDateString("fr-FR", { day: "2-digit", month: "short" })}`
+                : "—"}
+            </div>
+          </div>
+        </div>
+      )}
+
       {communeIds.length === 0 ? (
         <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-3 py-4">
           Ajoutez une commune favorite pour consulter son historique.
@@ -50,9 +86,14 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
       ) : q.isLoading ? (
         <p className="text-sm text-muted-foreground">Chargement…</p>
       ) : rows.length === 0 ? (
-        <p className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-3 py-4">
-          Aucune coupure archivée sur cette période. C'est plutôt bon signe 💧
-        </p>
+        <div className="text-sm text-muted-foreground rounded-lg border border-dashed border-border px-3 py-4 space-y-1">
+          <p>Aucune coupure archivée sur cette période pour vos communes 💧</p>
+          {tier === "free" && (
+            <p className="text-xs">
+              <Link to="/abonnements" className="text-primary underline">Passez à Pro</Link> pour étendre la fenêtre à 6 mois et voir un historique plus complet.
+            </p>
+          )}
+        </div>
       ) : (
         <ul className="divide-y divide-border/60">
           {rows.map((h) => {
@@ -90,14 +131,14 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
           <Lock className="h-3.5 w-3.5 text-primary" />
           <span className="flex-1">
             Plan gratuit : 7 jours d'historique.{" "}
-            <Link to="/abonnements" className="text-primary font-medium underline">Pro = 1 an</Link>,{" "}
+            <Link to="/abonnements" className="text-primary font-medium underline">Pro = 6 mois</Link>,{" "}
             Business = 5 ans.
           </span>
         </div>
       )}
       {tier === "pro" && (
         <p className="text-[11px] text-muted-foreground text-center">
-          Pro : 1 an d'historique · <Link to="/abonnements" className="text-primary underline">Business = 5 ans</Link>
+          Pro : 6 mois d'historique · <Link to="/abonnements" className="text-primary underline">Business = 5 ans</Link>
         </p>
       )}
     </section>
