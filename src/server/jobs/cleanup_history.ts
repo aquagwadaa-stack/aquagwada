@@ -1,14 +1,22 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
-/**
- * Nettoie les coupures terminées (resolved/cancelled) du table outages
- * une fois qu'elles sont bien archivées dans outage_history.
- * Garde uniquement le temps réel et les futures dans `outages`.
- */
-export async function cleanupHistory(): Promise<{ archived: number; deleted: number }> {
-  const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString(); // > 7j
+type CleanupSummary = {
+  normalized_outages?: number;
+  normalized_history?: number;
+  deduped_outages?: number;
+  deduped_history?: number;
+  deduped_forecasts?: number;
+};
 
-  // S'assurer que tout est archivé (le trigger le fait déjà, mais filet de sécurité)
+export async function cleanupHistory(): Promise<CleanupSummary & { archived: number; deleted: number; expiredArchived: number }> {
+  const { data: cleanupData, error: cleanupError } = await (supabaseAdmin as any).rpc("cleanup_outage_data");
+  if (cleanupError) throw cleanupError;
+
+  const { data: expiredArchived, error: expiredError } = await (supabaseAdmin as any).rpc("archive_expired_outages");
+  if (expiredError) throw expiredError;
+
+  const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString();
+
   const { data: toArchive } = await supabaseAdmin
     .from("outages")
     .select("id, commune_id, starts_at, ends_at, sector, cause, description, source, source_url, external_id, reliability_score, confidence_score, time_precision")
@@ -17,26 +25,29 @@ export async function cleanupHistory(): Promise<{ archived: number; deleted: num
     .lt("ends_at", cutoff);
 
   if (toArchive && toArchive.length > 0) {
-    const rows = toArchive.map((o: any) => ({
-      original_outage_id: o.id,
-      commune_id: o.commune_id,
-      sector: o.sector,
-      starts_at: o.starts_at,
-      ends_at: o.ends_at,
-      duration_minutes: Math.max(1, Math.round((new Date(o.ends_at).getTime() - new Date(o.starts_at).getTime()) / 60000)),
-      cause: o.cause,
-      description: o.description,
-      source: o.source,
-      source_url: o.source_url,
-      external_id: o.external_id,
-      reliability_score: o.reliability_score,
-      confidence_score: o.confidence_score,
-      time_precision: o.time_precision,
+    const rows = toArchive.map((outage: any) => ({
+      original_outage_id: outage.id,
+      commune_id: outage.commune_id,
+      sector: outage.sector,
+      starts_at: outage.starts_at,
+      ends_at: outage.ends_at,
+      duration_minutes: Math.max(1, Math.round((new Date(outage.ends_at).getTime() - new Date(outage.starts_at).getTime()) / 60000)),
+      cause: outage.cause,
+      description: outage.description,
+      source: outage.source,
+      source_url: outage.source_url,
+      external_id: outage.external_id,
+      reliability_score: outage.reliability_score,
+      confidence_score: outage.confidence_score,
+      time_precision: outage.time_precision,
     }));
-    await supabaseAdmin.from("outage_history").upsert(rows, { onConflict: "id", ignoreDuplicates: true });
+    const { error } = await supabaseAdmin.from("outage_history").upsert(rows, {
+      onConflict: "external_id",
+      ignoreDuplicates: false,
+    });
+    if (error) throw error;
   }
 
-  // Supprimer du table actif
   const { data: deleted, error } = await supabaseAdmin
     .from("outages")
     .delete()
@@ -46,5 +57,10 @@ export async function cleanupHistory(): Promise<{ archived: number; deleted: num
     .select("id");
   if (error) throw error;
 
-  return { archived: toArchive?.length ?? 0, deleted: deleted?.length ?? 0 };
+  return {
+    ...((cleanupData as CleanupSummary | null) ?? {}),
+    expiredArchived: Number(expiredArchived ?? 0),
+    archived: toArchive?.length ?? 0,
+    deleted: deleted?.length ?? 0,
+  };
 }

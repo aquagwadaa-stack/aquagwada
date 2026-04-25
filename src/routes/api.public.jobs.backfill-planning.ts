@@ -1,25 +1,21 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { backfillPlanningHistory } from "@/server/jobs/scrape_planning";
+import { rejectJobMethod, runProtectedJob } from "@/server/jobs/http";
 
-/** Admin/cron manuel : backfill des vrais plannings SMGEAG historiques. */
+type BackfillBody = {
+  since?: string;
+  maxPosts?: number;
+};
+
 export const Route = createFileRoute("/api/public/jobs/backfill-planning")({
   server: {
     handlers: {
-      GET: async () => runBackfillPlanning({}),
-      POST: async ({ request }) => {
-        const body = await request.json().catch(() => ({})) as { since?: string; maxPosts?: number };
-        return runBackfillPlanning({ since: body.since, maxPosts: body.maxPosts });
-      },
+      GET: async () => rejectJobMethod(),
+      POST: async ({ request }) =>
+        runProtectedJob(request, async () => {
+          const body = (await request.json().catch(() => ({}))) as BackfillBody;
+          return backfillPlanningHistory({ since: body.since, maxPosts: body.maxPosts });
+        }),
     },
   },
 });
-
-async function runBackfillPlanning(opts: { since?: string; maxPosts?: number }) {
-  try {
-    const result = await backfillPlanningHistory(opts);
-    return new Response(JSON.stringify(result), { status: 200, headers: { "content-type": "application/json" } });
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : String(e);
-    return new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { "content-type": "application/json" } });
-  }
-}
