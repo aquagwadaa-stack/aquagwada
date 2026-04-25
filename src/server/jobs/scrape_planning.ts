@@ -128,14 +128,14 @@ function findCommuneIds(name: string | null | undefined, communes: CommuneRow[])
     cbe: ["capesterre-belle-eau"],
     capesterre: ["capesterre-belle-eau"],
     abymes: ["les-abymes"],
-    les abymes: ["les-abymes"],
+    "les abymes": ["les-abymes"],
     gosier: ["le-gosier"],
     moule: ["le-moule"],
     desirade: ["la-desirade"],
     saintes: ["terre-de-haut", "terre-de-bas"],
-    les saintes: ["terre-de-haut", "terre-de-bas"],
-    terre de haut: ["terre-de-haut"],
-    terre de bas: ["terre-de-bas"],
+    "les saintes": ["terre-de-haut", "terre-de-bas"],
+    "terre de haut": ["terre-de-haut"],
+    "terre de bas": ["terre-de-bas"],
   };
 
   const directAlias = aliasToSlug[target];
