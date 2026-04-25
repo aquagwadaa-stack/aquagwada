@@ -648,6 +648,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      archive_expired_outages: { Args: never; Returns: number }
       expire_overdue_trials: { Args: never; Returns: number }
       get_commune_status: {
         Args: { _commune_id: string }
