@@ -313,6 +313,22 @@ function CartePage() {
               lockedCtaTo="/abonnements"
               teaserHours={1}
               communes={timelineCommunes}
+              emptyTitle={
+                noFavs
+                  ? "Choisissez une commune favorite pour voir sa timeline"
+                  : isPast
+                  ? "Aucune coupure archivée ce jour-là 💧"
+                  : isFuture
+                  ? "Aucune prévision pour cette date"
+                  : "Aucune coupure ce jour-là 💧"
+              }
+              emptyDescription={
+                noFavs
+                  ? "Vous pouvez aussi rester sans favori et consulter la carte ci-dessus."
+                  : "Sélectionnez un autre jour pour voir d'autres données."
+              }
+              emptyShowCta={noFavs}
+              emptyCtaLabel="Choisir ma commune"
             />
           )}
         </section>
