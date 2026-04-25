@@ -15,8 +15,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 const HISTORY_DAYS_LONG = 365 * 3;     // jusqu'à 3 ans
 const HISTORY_DAYS_RECENT = 60;         // pour calcul de tendance
 const FORECAST_DAYS = 14;
-const MIN_SAMPLE_FOR_PREDICTION = 1;
-const MIN_PROBABILITY_KEEP = 0.01;
+const MIN_SAMPLE_FOR_PREDICTION = 5;
+const MIN_PROBABILITY_KEEP = 0.1;
 
 type HistRow = {
   commune_id: string;
@@ -155,7 +155,11 @@ export async function generateForecasts(): Promise<{ generated: number; communes
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  await supabaseAdmin.from("forecasts").delete().gte("forecast_date", today.toISOString().slice(0, 10));
+  await supabaseAdmin
+    .from("forecasts")
+    .delete()
+    .gte("forecast_date", today.toISOString().slice(0, 10))
+    .not("basis", "like", "Planning officiel SMGEAG%");
 
   let generated = 0;
   const trend_breakdown: Record<string, number> = { improving: 0, stable: 0, worsening: 0 };
