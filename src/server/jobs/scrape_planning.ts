@@ -303,7 +303,10 @@ Règles impératives :
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash",
+      // gemini-2.5-pro = meilleure lecture des images denses multicolores
+      // (planning SMGEAG : ~15 blocs colorés, petites polices). Flash ratait
+      // la moitié des blocs.
+      model: "google/gemini-2.5-pro",
       messages: [{ role: "user", content }],
       response_format: { type: "json_object" },
     }),
