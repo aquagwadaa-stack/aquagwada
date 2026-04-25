@@ -4,15 +4,18 @@ import { AppShell } from "@/components/layout/AppShell";
 import { useQuery } from "@tanstack/react-query";
 import { fetchCommunes } from "@/lib/queries/communes";
 import { fetchOngoingOutages, fetchOutagesWindow } from "@/lib/queries/outages";
+import { fetchForecastsRange } from "@/lib/queries/forecasts";
 import { DayTimeline } from "@/components/outages/Timeline";
 import { StatusBadge } from "@/components/outages/StatusBadge";
-import { Activity, Droplets, Lock } from "lucide-react";
+import { Activity, Droplets, Lock, Sparkles } from "lucide-react";
 import { useAuth } from "@/providers/AuthProvider";
-import { fetchEffectiveSubscription } from "@/lib/queries/subscription";
-import { canSeeForecasts, type Tier } from "@/lib/subscription";
+import { canSeeForecasts, PLAN_CAPS } from "@/lib/subscription";
 import { ReportBlock } from "@/components/reports/ReportBlock";
 import { Link } from "@tanstack/react-router";
 import { supabase } from "@/integrations/supabase/client";
+import { HistoryPanel } from "@/components/history/HistoryPanel";
+import { ForecastTeaserLocked } from "@/components/upsell/ForecastTeaser";
+import { useEffectiveTier } from "@/hooks/use-admin";
 
 const OutageMap = lazy(() => import("@/components/map/OutageMap").then((m) => ({ default: m.OutageMap })));
 
@@ -30,12 +33,13 @@ export const Route = createFileRoute("/carte")({
 
 function CartePage() {
   const { user } = useAuth();
+  const { tier } = useEffectiveTier();
 
   // Bornes de date stabilisées (arrondies au jour) pour éviter les invalidations de cache.
-  const today = useMemo(() => new Date(), []);
   const dayKey = useMemo(() => {
     const d = new Date(); d.setHours(0, 0, 0, 0); return d.toISOString();
   }, []);
+  const today = useMemo(() => new Date(dayKey), [dayKey]);
   const { startIso, endIso } = useMemo(() => {
     const s = new Date(dayKey); s.setHours(0, 0, 0, 0);
     const e = new Date(dayKey); e.setHours(23, 59, 59, 999);
@@ -55,14 +59,9 @@ function CartePage() {
     staleTime: 60_000,
   });
 
-  const sub = useQuery({
-    queryKey: ["subscription", user?.id ?? "anon"],
-    queryFn: () => fetchEffectiveSubscription(user!.id),
-    enabled: !!user,
-    staleTime: 60_000,
-  });
-  const tier: Tier = (sub.data?.tier as Tier) ?? "free";
   const lockTimeline = !canSeeForecasts(tier);
+  const showForecasts = canSeeForecasts(tier);
+  const caps = PLAN_CAPS[tier];
 
   // Communes favorites (pour filtrer la sidebar et la timeline en plan free/pro)
   const favs = useQuery({
@@ -102,6 +101,71 @@ function CartePage() {
   const ongoingFiltered = filterByFavs(ongoing.data);
   const today24Filtered = filterByFavs(today24.data);
   const noFavs = restrictToFavs && favIds.length === 0;
+
+  // === Communes pour timelines multi-lignes ===
+  const allCommunes = useMemo(
+    () => (communes.data ?? []).map((c) => ({ id: c.id, name: c.name })),
+    [communes.data]
+  );
+  // Visiteurs OU Business : toute la Guadeloupe. Free/Pro connecté : favoris.
+  const timelineCommunes = !user || tier === "business" ? allCommunes : favCommunes;
+  const timelineCommuneIds = timelineCommunes.map((c) => c.id);
+
+  // === Prévisions sur N prochains jours ===
+  const forecastDays = caps.forecastDays || 7; // pour l'aperçu visiteur
+  const futureRange = useMemo(() => {
+    const start = new Date(dayKey);
+    start.setDate(start.getDate() + 1);
+    const end = new Date(start);
+    end.setDate(end.getDate() + Math.max(1, forecastDays - 1));
+    return {
+      from: start.toISOString().slice(0, 10),
+      to: end.toISOString().slice(0, 10),
+      days: Array.from({ length: forecastDays }, (_, i) => {
+        const d = new Date(start);
+        d.setDate(d.getDate() + i);
+        return d;
+      }),
+    };
+  }, [dayKey, forecastDays]);
+
+  const futureForecasts = useQuery({
+    queryKey: ["forecasts-range", futureRange.from, futureRange.to, timelineCommuneIds.join(",")],
+    queryFn: () => fetchForecastsRange(
+      futureRange.from,
+      futureRange.to,
+      timelineCommuneIds.length > 0 ? timelineCommuneIds : undefined
+    ),
+    enabled: showForecasts && timelineCommuneIds.length > 0,
+    staleTime: 5 * 60_000,
+  });
+
+  // === Historique J-7 (aperçu) pour la timeline « passé » ===
+  const pastRange = useMemo(() => {
+    const end = new Date(dayKey);
+    end.setDate(end.getDate() - 1);
+    const start = new Date(end);
+    start.setDate(start.getDate() - 6); // 7 derniers jours hors aujourd'hui
+    return {
+      startIso: new Date(start.setHours(0, 0, 0, 0)).toISOString(),
+      endIso: new Date(end.setHours(23, 59, 59, 999)).toISOString(),
+      days: Array.from({ length: 7 }, (_, i) => {
+        const d = new Date(start);
+        d.setDate(d.getDate() + i);
+        return d;
+      }),
+    };
+  }, [dayKey]);
+
+  const pastOutages = useQuery({
+    queryKey: ["outages-past7", pastRange.startIso, pastRange.endIso],
+    queryFn: () => fetchOutagesWindow(pastRange.startIso, pastRange.endIso, timelineCommuneIds.length > 0 ? timelineCommuneIds : undefined),
+    staleTime: 5 * 60_000,
+    enabled: timelineCommuneIds.length > 0,
+  });
+
+  // Pour l'historique panel : si Business → toutes communes, sinon favs
+  const historyCommuneIds = tier === "business" ? allCommunes.map((c) => c.id) : favIds;
 
   return (
     <AppShell>
@@ -196,6 +260,98 @@ function CartePage() {
             communes={restrictToFavs && !favs.isLoading && favCommunes.length > 0 ? favCommunes : undefined}
           />
         </div>
+
+        {/* === Historique 7 derniers jours (timeline multi-communes) === */}
+        <section className="mt-10 space-y-4">
+          <div className="flex items-end justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-display text-xl font-semibold">7 derniers jours</h2>
+              <p className="text-sm text-muted-foreground">
+                Coupures passées par commune {tier === "business" ? "· toutes les communes" : restrictToFavs ? "· vos favoris" : ""}
+              </p>
+            </div>
+            {tier === "free" && (
+              <span className="text-[11px] inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-primary">
+                <Lock className="h-3 w-3" /> Plan Pro = 6 mois · Business = 5 ans
+              </span>
+            )}
+          </div>
+          {timelineCommuneIds.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+              {noFavs ? (
+                <>Choisissez votre commune favorite pour voir son historique.{" "}
+                  <Link to="/ma-commune" className="text-primary underline">Choisir</Link>
+                </>
+              ) : "Aucune commune sélectionnée."}
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {pastRange.days.map((d) => (
+                <DayTimeline
+                  key={d.toISOString()}
+                  date={d}
+                  outages={(pastOutages.data ?? []).filter((o) => {
+                    const t = new Date(o.starts_at);
+                    return t.toDateString() === d.toDateString();
+                  })}
+                  communes={timelineCommunes}
+                />
+              ))}
+            </div>
+          )}
+        </section>
+
+        {/* === Prévisions 14 jours (timeline multi-communes) === */}
+        <section className="mt-10 space-y-4">
+          <div className="flex items-end justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="font-display text-xl font-semibold flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-warning" /> Prévisions {showForecasts ? `${forecastDays} jours` : "à venir"}
+              </h2>
+              <p className="text-sm text-muted-foreground">
+                Estimations basées sur le planning SMGEAG et l'historique{tier === "business" ? " · toutes les communes" : restrictToFavs ? " · vos favoris" : ""}.
+              </p>
+            </div>
+          </div>
+          {!showForecasts ? (
+            <ForecastTeaserLocked />
+          ) : timelineCommuneIds.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
+              {noFavs ? (
+                <>Choisissez votre commune favorite pour voir ses prévisions.{" "}
+                  <Link to="/ma-commune" className="text-primary underline">Choisir</Link>
+                </>
+              ) : "Aucune commune."}
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {futureRange.days.slice(0, 7).map((d) => {
+                const dayStr = d.toISOString().slice(0, 10);
+                const dayForecasts = (futureForecasts.data ?? []).filter((f) => f.forecast_date === dayStr);
+                return (
+                  <DayTimeline
+                    key={d.toISOString()}
+                    date={d}
+                    outages={[]}
+                    forecasts={dayForecasts}
+                    showForecasts
+                    communes={timelineCommunes}
+                  />
+                );
+              })}
+              {forecastDays > 7 && (
+                <p className="text-[11px] text-center text-muted-foreground">
+                  Affichage 7/{forecastDays} jours · les jours suivants sont visibles dans <Link to="/ma-commune" className="underline">Ma commune</Link>.
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* === Historique détaillé (panel) === */}
+        <section className="mt-10">
+          <HistoryPanel tier={tier} communeIds={historyCommuneIds} />
+        </section>
       </div>
     </AppShell>
   );
