@@ -266,32 +266,53 @@ export function DayTimeline({
           )}
 
           {/* Mode classique : on rend toutes les coupures empilées */}
-          {!multiMode && outages.map((o) => {
-            const s = new Date(o.starts_at).getTime();
-            const end = outageEndForTimeline(o, endOfDay);
-            const e = end.getTime();
-            const segment = segmentPosition(s, e, startOfDay, endOfDay, 2);
-            if (!segment) return null;
-            const tone =
-              o.status === "ongoing" ? "bg-destructive/15 border-destructive/40"
-                : o.status === "resolved" ? "bg-success/10 border-success/40"
-                : o.status === "cancelled" ? "bg-muted border-border"
-                : "bg-warning/15 border-warning/50";
+          {!multiMode && (() => {
+            const grouped = groupOutagesByWindow(outages);
+            const layoutItems = grouped.map((g) => {
+              const s = new Date(g.starts_at).getTime();
+              const end = outageEndForTimeline(g.primary, endOfDay);
+              return { key: `o-${g.key}`, startMs: s, endMs: end.getTime(), g };
+            });
+            const { laneOf, laneCount } = computeLanes(layoutItems);
+            const laneHeight = 48;
+            const totalHeight = Math.max(laneHeight, laneCount * laneHeight + (laneCount - 1) * 6);
             return (
-              <div key={o.id} className="relative h-12">
-                <div className={`absolute top-0 h-full rounded-md border ${tone} p-1.5 overflow-hidden`} style={{ left: `${segment.left}%`, width: `${segment.width}%` }}>
-                  <div className="flex items-center gap-2 text-[11px] font-medium truncate">
-                    <Clock className="h-3 w-3 shrink-0" />
-                    <span>{formatHM(o.starts_at)}–{outageEndLabel(o, end)}</span>
-                    {o.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {o.commune.name}</span>}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground truncate">
-                    {o.sector || o.cause || o.description || "Coupure"}
-                  </div>
-                </div>
+              <div className="relative" style={{ height: totalHeight }}>
+                {layoutItems.map(({ key, g }) => {
+                  const s = new Date(g.starts_at).getTime();
+                  const end = outageEndForTimeline(g.primary, endOfDay);
+                  const segment = segmentPosition(s, end.getTime(), startOfDay, endOfDay, 2);
+                  if (!segment) return null;
+                  const lane = laneOf.get(key) ?? 0;
+                  const top = lane * (laneHeight + 6);
+                  const tone =
+                    g.status === "ongoing" ? "bg-destructive/15 border-destructive/40"
+                      : g.status === "resolved" ? "bg-success/10 border-success/40"
+                      : g.status === "cancelled" ? "bg-muted border-border"
+                      : "bg-warning/15 border-warning/50";
+                  const sectorLabel = g.sectors.length === 0
+                    ? (g.primary.cause || g.primary.description || "Coupure")
+                    : g.sectors.length <= 2
+                      ? `Secteur${g.sectors.length > 1 ? "s" : ""} ${g.sectors.join(", ")}`
+                      : `${g.sectors.length} secteurs concernés`;
+                  return (
+                    <div
+                      key={key}
+                      className={`absolute rounded-md border ${tone} p-1.5 overflow-hidden`}
+                      style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
+                    >
+                      <div className="flex items-center gap-2 text-[11px] font-medium truncate">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        <span>{formatHM(g.starts_at)}–{outageEndLabel(g.primary, end)}</span>
+                        {g.primary.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {g.primary.commune.name}</span>}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground truncate">{sectorLabel}</div>
+                    </div>
+                  );
+                })}
               </div>
             );
-          })}
+          })()}
 
           {/* Forecasts (jaune, dashed) — mode classique */}
           {!multiMode && dailyForecasts.map((f) => {
