@@ -5,17 +5,22 @@ import { generateForecasts } from "@/server/jobs/generate_forecasts";
 export const Route = createFileRoute("/api/public/jobs/generate-forecasts")({
   server: {
     handlers: {
+      GET: async () => runGenerateForecasts(),
       POST: async ({ request }) => {
-        try {
-          const result = await generateForecasts();
-          return new Response(JSON.stringify({ ok: true, ...result }), {
-            status: 200, headers: { "content-type": "application/json" },
-          });
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          return new Response(JSON.stringify({ ok: false, error: msg }), { status: 500 });
-        }
+        return runGenerateForecasts();
       },
     },
   },
 });
+
+async function runGenerateForecasts() {
+  try {
+    const result = await generateForecasts();
+    return new Response(JSON.stringify({ ok: true, ...result }), {
+      status: 200, headers: { "content-type": "application/json" },
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    return new Response(JSON.stringify({ ok: false, error: msg }), { status: 500, headers: { "content-type": "application/json" } });
+  }
+}
