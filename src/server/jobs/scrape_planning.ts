@@ -323,7 +323,6 @@ async function persistPlanningItems(
     skipped: 0,
     errors: 0,
     aiFailed: 0,
-    fallbackUsed: 0,
   };
 
   const nowMs = Date.now();
@@ -462,7 +461,6 @@ function mergeStats(target: PersistStats, source: PersistStats) {
   target.skipped += source.skipped;
   target.errors += source.errors;
   target.aiFailed += source.aiFailed;
-  target.fallbackUsed += source.fallbackUsed;
 }
 
 export async function scrapePlanning(): Promise<{
@@ -481,7 +479,7 @@ export async function scrapePlanning(): Promise<{
   const list = (communes ?? []) as CommuneRow[];
 
   const posts = await fetchPlanningPosts({ maxPosts: 3 });
-  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0, fallbackUsed: 0 };
+  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0 };
   let images = 0;
 
   for (const post of posts) {
@@ -497,10 +495,8 @@ export async function scrapePlanning(): Promise<{
     try {
       const stats = await persistPlanningItems(post, items, list);
       if (aiFailed) stats.aiFailed++;
-      // Si l'IA a échoué (ex: 402 crédits) ou n'a rien produit, on tente un fallback déterministe.
-      if (aiFailed || items.length === 0) {
-        await persistFallbackPlanning(post, list, stats);
-      }
+      // Si l'IA a échoué ou n'a rien produit, on n'écrit RIEN.
+      // Mieux vaut un trou (loggé dans scraper_runs) qu'une donnée fausse.
       mergeStats(totals, stats);
     } catch (e) {
       totals.errors++;
@@ -519,7 +515,7 @@ export async function scrapePlanning(): Promise<{
     items_found: totals.items,
     items_inserted: inserted,
     items_updated: updated,
-    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed} fallback=${totals.fallbackUsed}`,
+    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed}`,
   });
 
   return { ok: totals.errors === 0, posts: posts.length, images, forecasts_extracted: totals.items, inserted, updated, skipped: totals.skipped, errors: totals.errors };
@@ -547,7 +543,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
   const list = (communes ?? []) as CommuneRow[];
 
   const posts = await fetchPlanningPosts({ since, maxPosts });
-  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0, fallbackUsed: 0 };
+  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0 };
   let images = 0;
 
   for (const post of posts) {
@@ -563,9 +559,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
     try {
       const stats = await persistPlanningItems(post, items, list);
       if (aiFailed) stats.aiFailed++;
-      if (aiFailed || items.length === 0) {
-        await persistFallbackPlanning(post, list, stats);
-      }
+      // Si l'IA a échoué, on saute ce post sans rien écrire.
       mergeStats(totals, stats);
     } catch (e) {
       totals.errors++;
@@ -582,7 +576,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
     items_found: totals.items,
     items_inserted: totals.historyInserted + totals.outagesInserted + totals.forecastsUpserted,
     items_updated: totals.historyUpdated + totals.outagesUpdated,
-    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed} fallback=${totals.fallbackUsed}`,
+    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed}`,
   });
 
   return {
