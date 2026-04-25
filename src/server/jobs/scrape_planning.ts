@@ -16,7 +16,6 @@ const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const DEFAULT_BACKFILL_SINCE = "2025-10-01";
 
 const OFFICIAL_BASIS_PREFIX = "Planning officiel SMGEAG";
-const FALLBACK_BASIS_PREFIX = "Planning officiel SMGEAG (fallback déterministe)";
 
 type CommuneRow = { id: string; name: string; slug: string };
 
@@ -47,7 +46,6 @@ type PersistStats = {
   skipped: number;
   errors: number;
   aiFailed: number;
-  fallbackUsed: number;
 };
 
 function norm(s: string): string {
