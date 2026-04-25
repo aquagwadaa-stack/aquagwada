@@ -40,6 +40,7 @@ type AIOutage = {
 };
 
 function norm(s: string): string {
+  if (typeof s !== "string" || !s) return "";
   return s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
 }
 
