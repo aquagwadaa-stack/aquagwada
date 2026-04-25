@@ -23,7 +23,7 @@ export async function fetchHistory(opts: {
 }): Promise<{ rows: HistoryEntry[]; total: number }> {
   const days = Math.min(opts.daysBack ?? 30, 1825);
   const page = Math.max(1, opts.page ?? 1);
-  const pageSize = Math.min(100, Math.max(10, opts.pageSize ?? 30));
+  const pageSize = Math.min(2000, Math.max(10, opts.pageSize ?? 30));
   const fromIso = new Date(Date.now() - days * 86400_000).toISOString();
 
   let q = supabase
