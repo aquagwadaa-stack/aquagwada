@@ -114,20 +114,23 @@ function parseHtml(html: string, sourceUrl: string, sourceKey: string, communes:
   const $ = cheerio.load(html);
   const items: ScrapedItem[] = [];
 
-  // Cible large : articles, posts, divs avec dates ou titres
-  const blocks = $("article, .post, .actualite, .travaux, .info, .news-item, .elementor-post, .elementor-widget-text-editor, .entry-content, main p, main li").toArray();
+  // Cibles strictes : uniquement les vrais articles / cartes de post.
+  // On EXCLUT les <p>/<li> génériques de <main> qui ramassaient nav/footer/legal.
+  const blocks = $("article, .post, .elementor-post, .news-item, .actualite, .travaux").toArray();
 
   const seenInPage = new Set<string>();
 
   for (const el of blocks) {
     const $el = $(el);
     const text = $el.text().replace(/\s+/g, " ").trim();
-    if (text.length < 30 || text.length > 2000) continue;
+    if (text.length < 60 || text.length > 4000) continue;
     const lower = norm(text);
 
-    // Filtre : doit contenir au moins un mot-clé coupure / travaux / réseau
-    const hasKeyword = /(coupure|interruption|baisse de pression|travaux|reparation|fuite|maintenance|reseau|distribution|alimentation)/.test(lower);
-    if (!hasKeyword) continue;
+    // Mots-clés FORTS (action concrète sur le réseau d'eau).
+    // On retire "reseau"/"distribution"/"alimentation" seuls qui matchaient
+    // toutes les pages génériques.
+    const hasStrongKeyword = /(coupure|interruption|baisse de pression|tour d'eau|tour deau|fuite|reparation|casse|rupture|perturbation)/.test(lower);
+    if (!hasStrongKeyword) continue;
 
     // Identifie les communes mentionnées
     const matchedCommunes: string[] = [];
@@ -143,15 +146,16 @@ function parseHtml(html: string, sourceUrl: string, sourceKey: string, communes:
     const date = extractDate(text, now);
     const window = extractTimeWindow(text);
     const hour = window.start;
+
+    // EXIGE une date détectée. Sans date, on rejette : insérer avec now()
+    // créait des fausses coupures "actuelles" sur la base des pages génériques.
+    if (!date) continue;
+
     let starts_at: Date;
     let ends_at: Date | null = null;
     let time_known = false;
-    if (date) {
-      starts_at = new Date(date);
-      if (hour) { starts_at.setHours(hour.h, hour.m, 0, 0); time_known = true; }
-    } else {
-      starts_at = new Date(now);
-    }
+    starts_at = new Date(date);
+    if (hour) { starts_at.setHours(hour.h, hour.m, 0, 0); time_known = true; }
     if (window.end) {
       ends_at = new Date(starts_at);
       ends_at.setHours(window.end.h, window.end.m, 0, 0);
@@ -180,8 +184,9 @@ function parseHtml(html: string, sourceUrl: string, sourceKey: string, communes:
       ends_at: ends_at?.toISOString() ?? null,
       description: desc,
       cause,
-      reliability_score: 0.95, // SMGEAG officiel
-      confidence_score: time_known ? 0.85 : 0.65,
+      // Annonce texte (≠ planning tabulaire) : fiabilité plus modeste.
+      reliability_score: 0.7,
+      confidence_score: time_known ? 0.75 : 0.55,
       is_estimated: !time_known,
     });
   }
