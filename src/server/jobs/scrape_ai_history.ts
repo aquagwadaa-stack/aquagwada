@@ -195,7 +195,7 @@ export async function scrapeAIHistory(): Promise<{ ok: boolean; pages_scanned: n
           source_url: r.url,
           external_id: externalId,
           starts_at: startsAt.toISOString(),
-          ends_at: endsAt ? endsAt.toISOString() : null,
+          ends_at: (endsAt ?? startsAt).toISOString(),
           duration_minutes: duration > 0 ? duration : 0,
           description: out.description.slice(0, 500),
           cause: out.cause,
