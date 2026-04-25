@@ -159,10 +159,14 @@ function normalizeTime(value: string | null | undefined): string | null {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
-function toDateTime(date: string, time: string): Date | null {
+function toGuadeloupeDateTime(date: string, time: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
   if (!/^\d{2}:\d{2}$/.test(time)) return null;
-  const d = new Date(`${date}T${time}:00.000Z`);
+  // Les plannings SMGEAG sont publiés en heure locale Guadeloupe (UTC-4).
+  // On stocke en UTC pour la base, donc 20:00 Guadeloupe = 00:00Z le lendemain.
+  const [year, month, day] = date.split("-").map(Number);
+  const [hour, minute] = time.split(":").map(Number);
+  const d = new Date(Date.UTC(year, month - 1, day, hour + 4, minute, 0, 0));
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
@@ -356,8 +360,8 @@ async function persistPlanningItems(
       continue;
     }
 
-    const startsAt = toDateTime(item.date, startTime);
-    let endsAt = toDateTime(item.date, endTime);
+    const startsAt = toGuadeloupeDateTime(item.date, startTime);
+    let endsAt = toGuadeloupeDateTime(item.date, endTime);
     if (!startsAt || !endsAt) {
       stats.skipped++;
       continue;
