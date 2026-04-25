@@ -31,6 +31,8 @@ function TrendBadge({ trend }: { trend: Forecast["trend"] }) {
 function outageEndForTimeline(o: Outage, endOfDay: Date): Date {
   if (o.ends_at) return new Date(o.ends_at);
   const start = new Date(o.starts_at).getTime();
+  const startOfDay = new Date(endOfDay); startOfDay.setHours(0, 0, 0, 0);
+  if (o.status === "ongoing" && start < startOfDay.getTime()) return endOfDay;
   const estimatedMinutes = o.estimated_duration_minutes ?? 180;
   return new Date(Math.min(endOfDay.getTime(), start + estimatedMinutes * 60_000));
 }
