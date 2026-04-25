@@ -139,6 +139,16 @@ function findCommuneId(name: string, communes: CommuneRow[]): string | null {
   return null;
 }
 
+function findCommuneIdsInText(text: string, communes: CommuneRow[]): string[] {
+  const haystack = norm(text);
+  return communes
+    .filter((c) => {
+      const cn = norm(c.name);
+      return cn.length >= 4 && haystack.includes(cn);
+    })
+    .map((c) => c.id);
+}
+
 export async function scrapeAIHistory(): Promise<{ ok: boolean; pages_scanned: number; outages_extracted: number; inserted: number; skipped: number; errors: number }> {
   const startedAt = new Date();
   const { data: communes, error: cErr } = await supabaseAdmin.from("communes").select("id, name, slug");
@@ -174,11 +184,14 @@ export async function scrapeAIHistory(): Promise<{ ok: boolean; pages_scanned: n
       outagesExtracted += aiResults.length;
 
       for (const out of aiResults) {
-        const communeId = findCommuneId(out.commune_name, list);
-        if (!communeId) { skipped++; continue; }
+        const communeIds = findCommuneId(out.commune_name, list)
+          ? [findCommuneId(out.commune_name, list)!]
+          : findCommuneIdsInText(`${out.commune_name} ${out.description} ${md.slice(0, 2000)}`, list);
+        if (communeIds.length === 0) { skipped++; continue; }
         const startsAt = new Date(out.starts_at);
         if (Number.isNaN(startsAt.getTime())) { skipped++; continue; }
 
+        for (const communeId of communeIds) {
         const externalId = hashId(`${communeId}|${startsAt.toISOString().slice(0, 16)}|${out.description.slice(0, 60)}`);
 
         // Dédup
@@ -189,17 +202,19 @@ export async function scrapeAIHistory(): Promise<{ ok: boolean; pages_scanned: n
           .maybeSingle();
         if (existing) { skipped++; continue; }
 
-        const endsAt = out.ends_at ? new Date(out.ends_at) : null;
-        const duration = out.duration_minutes ?? (endsAt ? Math.round((endsAt.getTime() - startsAt.getTime()) / 60000) : 0);
+        const parsedEnd = out.ends_at ? new Date(out.ends_at) : null;
+        const endsAt = parsedEnd && !Number.isNaN(parsedEnd.getTime()) ? parsedEnd : null;
+        const duration = out.duration_minutes ?? (endsAt ? Math.round((endsAt.getTime() - startsAt.getTime()) / 60000) : 180);
+        const safeEnd = endsAt ?? new Date(startsAt.getTime() + Math.max(1, duration) * 60_000);
 
         const { error } = await supabaseAdmin.from("outage_history").insert({
           commune_id: communeId,
-          source: "official",
+          source: "scraping",
           source_url: r.url,
           external_id: externalId,
           starts_at: startsAt.toISOString(),
-          ends_at: (endsAt ?? startsAt).toISOString(),
-          duration_minutes: duration > 0 ? duration : 0,
+          ends_at: safeEnd.toISOString(),
+          duration_minutes: Math.max(1, duration),
           description: out.description.slice(0, 500),
           cause: out.cause,
           sector: out.sector,
@@ -209,6 +224,7 @@ export async function scrapeAIHistory(): Promise<{ ok: boolean; pages_scanned: n
         });
         if (error) { errors++; console.warn(`[ai-history] insert error`, error.message); }
         else { inserted++; }
+        }
       }
     }
   }
