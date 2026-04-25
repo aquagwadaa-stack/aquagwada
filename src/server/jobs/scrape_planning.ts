@@ -16,6 +16,7 @@ const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const DEFAULT_BACKFILL_SINCE = "2025-10-01";
 
 const OFFICIAL_BASIS_PREFIX = "Planning officiel SMGEAG";
+const FALLBACK_BASIS_PREFIX = "Planning officiel SMGEAG (fallback déterministe)";
 
 type CommuneRow = { id: string; name: string; slug: string };
 
@@ -45,6 +46,8 @@ type PersistStats = {
   forecastsUpserted: number;
   skipped: number;
   errors: number;
+  aiFailed: number;
+  fallbackUsed: number;
 };
 
 function norm(s: string): string {
@@ -74,6 +77,172 @@ function hashId(input: string): string {
   let h = 0;
   for (let i = 0; i < input.length; i++) h = ((h << 5) - h + input.charCodeAt(i)) | 0;
   return `smgp_${(h >>> 0).toString(36)}`;
+}
+
+/** Mappe une zone SMGEAG (déduite du nom d'image) vers une liste de communes. */
+const ZONE_TO_COMMUNES: Record<string, string[]> = {
+  centre: [
+    "les-abymes", "pointe-a-pitre", "le-gosier", "baie-mahault", "petit-bourg", "goyave",
+  ],
+  "grande terre": [
+    "le-moule", "morne-a-l-eau", "saint-francois", "sainte-anne", "petit-canal", "port-louis", "anse-bertrand",
+  ],
+  "sud basse terre": [
+    "capesterre-belle-eau", "trois-rivieres", "vieux-fort", "gourbeyre", "basse-terre", "saint-claude", "baillif",
+  ],
+  "nord basse terre": [
+    "sainte-rose", "deshaies", "bouillante", "pointe-noire", "vieux-habitants", "lamentin",
+  ],
+  saintes: ["terre-de-haut", "terre-de-bas"],
+  desirade: ["la-desirade"],
+  "marie galante": ["grand-bourg", "saint-louis", "capesterre-de-marie-galante"],
+};
+
+function detectZoneFromUrl(url: string): string | null {
+  const n = norm(url);
+  if (n.includes("nord basse")) return "nord basse terre";
+  if (n.includes("sud basse")) return "sud basse terre";
+  if (n.includes("grande terre")) return "grande terre";
+  if (n.includes("marie galante")) return "marie galante";
+  if (n.includes("desirade") || n.includes("désirade")) return "desirade";
+  if (n.includes("saintes")) return "saintes";
+  if (n.includes("centre")) return "centre";
+  return null;
+}
+
+/** Extrait les bornes de la semaine depuis l'URL ou le titre (ex: "du 20042026 au 26042026" ou "du 20 au 26 avril 2026"). */
+function extractWeekRange(post: WPPost & { imageUrls: string[] }): { start: Date; end: Date } | null {
+  // 1) Cherche d'abord un format compact dans les noms d'images
+  for (const img of post.imageUrls) {
+    const m = img.match(/(\d{2})(\d{2})(\d{4})[-_]au[-_](\d{2})(\d{2})(\d{4})/i);
+    if (m) {
+      const start = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00.000Z`);
+      const end = new Date(`${m[6]}-${m[5]}-${m[4]}T23:59:59.999Z`);
+      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) return { start, end };
+    }
+  }
+  // 2) Sinon, fallback sur la date du post : semaine commençant à la date du post
+  const postDate = new Date(post.date);
+  if (Number.isNaN(postDate.getTime())) return null;
+  const start = new Date(postDate);
+  start.setUTCHours(0, 0, 0, 0);
+  const end = new Date(start);
+  end.setUTCDate(end.getUTCDate() + 6);
+  end.setUTCHours(23, 59, 59, 999);
+  return { start, end };
+}
+
+/** Communes (slugs) couvertes par les images du post, déduites des zones détectées. */
+function communesCoveredByPostImages(post: WPPost & { imageUrls: string[] }, communes: CommuneRow[]): string[] {
+  const slugs = new Set<string>();
+  for (const img of post.imageUrls) {
+    const zone = detectZoneFromUrl(img);
+    if (!zone) continue;
+    for (const slug of ZONE_TO_COMMUNES[zone] ?? []) slugs.add(slug);
+  }
+  return communes.filter((c) => slugs.has(c.slug)).map((c) => c.id);
+}
+
+/** Construit un "événement déterministe" par jour×commune pour la fenêtre 20:00→07:00, marqué approximate. */
+async function persistFallbackPlanning(
+  post: WPPost & { imageUrls: string[] },
+  communes: CommuneRow[],
+  stats: PersistStats,
+) {
+  const range = extractWeekRange(post);
+  if (!range) return;
+  const communeIds = communesCoveredByPostImages(post, communes);
+  if (communeIds.length === 0) return;
+
+  const nowMs = Date.now();
+  const title = decodeHtml(post.title.rendered);
+  const basis = `${FALLBACK_BASIS_PREFIX} · ${title}`.slice(0, 500);
+
+  // Itère jour par jour entre range.start et range.end
+  for (let t = range.start.getTime(); t <= range.end.getTime(); t += 24 * 60 * 60_000) {
+    const dayStart = new Date(t);
+    // Fenêtre standard SMGEAG : fermeture 20h → ouverture 7h le lendemain
+    const startsAt = new Date(dayStart); startsAt.setUTCHours(20, 0, 0, 0);
+    const endsAt = new Date(dayStart); endsAt.setUTCDate(endsAt.getUTCDate() + 1); endsAt.setUTCHours(7, 0, 0, 0);
+    const durationMinutes = Math.round((endsAt.getTime() - startsAt.getTime()) / 60_000);
+    for (const communeId of communeIds) {
+      const externalId = hashId(`fallback|${post.id}|${communeId}|${startsAt.toISOString().slice(0, 10)}`);
+      const isPast = endsAt.getTime() < nowMs;
+      if (isPast) {
+        const row = {
+          commune_id: communeId,
+          source: "official" as const,
+          source_url: post.link,
+          external_id: externalId,
+          starts_at: startsAt.toISOString(),
+          ends_at: endsAt.toISOString(),
+          duration_minutes: durationMinutes,
+          description: `Planning hebdomadaire SMGEAG (créneau standard 20h-07h, secteurs non détaillés)`,
+          cause: "tour d'eau",
+          sector: null,
+          reliability_score: 0.85,
+          confidence_score: 0.6,
+          time_precision: "approximate" as const,
+        };
+        const { data: existing } = await supabaseAdmin
+          .from("outage_history").select("id").eq("external_id", externalId).maybeSingle();
+        const { error } = existing
+          ? await supabaseAdmin.from("outage_history").update(row).eq("id", existing.id)
+          : await supabaseAdmin.from("outage_history").insert(row);
+        if (error) stats.errors++;
+        else if (existing) stats.historyUpdated++;
+        else stats.historyInserted++;
+      } else {
+        const status = startsAt.getTime() <= nowMs && endsAt.getTime() >= nowMs ? "ongoing" : "scheduled";
+        const row = {
+          commune_id: communeId,
+          source: "official" as const,
+          source_url: post.link,
+          external_id: externalId,
+          starts_at: startsAt.toISOString(),
+          ends_at: endsAt.toISOString(),
+          estimated_duration_minutes: durationMinutes,
+          description: `Planning hebdomadaire SMGEAG (créneau standard 20h-07h, secteurs non détaillés)`,
+          cause: "tour d'eau",
+          sector: null,
+          reliability_score: 0.85,
+          confidence_score: 0.6,
+          confidence_source_weight: 1.0,
+          is_estimated: true,
+          time_precision: "approximate" as const,
+          status: status as "scheduled" | "ongoing",
+        };
+        const { data: existing } = await supabaseAdmin
+          .from("outages").select("id").eq("external_id", externalId).maybeSingle();
+        const r = existing
+          ? await supabaseAdmin.from("outages").update({ ...row, updated_at: new Date().toISOString() }).eq("id", existing.id)
+          : await supabaseAdmin.from("outages").insert(row);
+        if (r.error) stats.errors++;
+        else if (existing) stats.outagesUpdated++;
+        else stats.outagesInserted++;
+
+        if (startsAt.getTime() >= new Date().setUTCHours(0, 0, 0, 0)) {
+          const { error } = await supabaseAdmin.from("forecasts").upsert({
+            commune_id: communeId,
+            forecast_date: startsAt.toISOString().slice(0, 10),
+            window_start: "20:00:00",
+            window_end: "07:00:00",
+            expected_duration_minutes: durationMinutes,
+            probability: 0.9,
+            confidence: 0.75,
+            trend: "stable",
+            basis,
+            sample_size: 1,
+            day_of_week_signal: 0,
+          }, { onConflict: "commune_id,forecast_date,window_start" });
+          if (error) stats.errors++;
+          else stats.forecastsUpserted++;
+        }
+      }
+      stats.items++;
+    }
+  }
+  stats.fallbackUsed++;
 }
 
 function cleanJson(content: string): string {
@@ -257,6 +426,8 @@ async function persistPlanningItems(
     forecastsUpserted: 0,
     skipped: 0,
     errors: 0,
+    aiFailed: 0,
+    fallbackUsed: 0,
   };
 
   const nowMs = Date.now();
@@ -394,6 +565,8 @@ function mergeStats(target: PersistStats, source: PersistStats) {
   target.forecastsUpserted += source.forecastsUpserted;
   target.skipped += source.skipped;
   target.errors += source.errors;
+  target.aiFailed += source.aiFailed;
+  target.fallbackUsed += source.fallbackUsed;
 }
 
 export async function scrapePlanning(): Promise<{
@@ -412,18 +585,30 @@ export async function scrapePlanning(): Promise<{
   const list = (communes ?? []) as CommuneRow[];
 
   const posts = await fetchPlanningPosts({ maxPosts: 3 });
-  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0 };
+  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0, fallbackUsed: 0 };
   let images = 0;
 
   for (const post of posts) {
     images += post.imageUrls.length;
+    let items: AIPlanningItem[] = [];
+    let aiFailed = false;
     try {
-      const items = await extractItemsFromPost(post, list);
+      items = await extractItemsFromPost(post, list);
+    } catch (e) {
+      aiFailed = true;
+      console.warn("[planning] AI extraction failed", post.link, e);
+    }
+    try {
       const stats = await persistPlanningItems(post, items, list);
+      if (aiFailed) stats.aiFailed++;
+      // Si l'IA a échoué (ex: 402 crédits) ou n'a rien produit, on tente un fallback déterministe.
+      if (aiFailed || items.length === 0) {
+        await persistFallbackPlanning(post, list, stats);
+      }
       mergeStats(totals, stats);
     } catch (e) {
       totals.errors++;
-      console.warn("[planning] post failed", post.link, e);
+      console.warn("[planning] post persist failed", post.link, e);
     }
   }
 
@@ -434,11 +619,11 @@ export async function scrapePlanning(): Promise<{
     url: posts.map((p) => p.link).join(","),
     started_at: startedAt.toISOString(),
     finished_at: new Date().toISOString(),
-    ok: totals.errors === 0,
+    ok: totals.errors === 0 && (totals.outagesInserted + totals.outagesUpdated + totals.historyInserted + totals.historyUpdated + totals.forecastsUpserted) > 0,
     items_found: totals.items,
     items_inserted: inserted,
     items_updated: updated,
-    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors}`,
+    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed} fallback=${totals.fallbackUsed}`,
   });
 
   return { ok: totals.errors === 0, posts: posts.length, images, forecasts_extracted: totals.items, inserted, updated, skipped: totals.skipped, errors: totals.errors };
@@ -466,18 +651,29 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
   const list = (communes ?? []) as CommuneRow[];
 
   const posts = await fetchPlanningPosts({ since, maxPosts });
-  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0 };
+  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0, fallbackUsed: 0 };
   let images = 0;
 
   for (const post of posts) {
     images += post.imageUrls.length;
+    let items: AIPlanningItem[] = [];
+    let aiFailed = false;
     try {
-      const items = await extractItemsFromPost(post, list);
+      items = await extractItemsFromPost(post, list);
+    } catch (e) {
+      aiFailed = true;
+      console.warn("[planning-backfill] AI extraction failed", post.link, e);
+    }
+    try {
       const stats = await persistPlanningItems(post, items, list);
+      if (aiFailed) stats.aiFailed++;
+      if (aiFailed || items.length === 0) {
+        await persistFallbackPlanning(post, list, stats);
+      }
       mergeStats(totals, stats);
     } catch (e) {
       totals.errors++;
-      console.warn("[planning-backfill] post failed", post.link, e);
+      console.warn("[planning-backfill] post persist failed", post.link, e);
     }
   }
 
@@ -486,11 +682,11 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
     url: `wp-json since=${since}`,
     started_at: startedAt.toISOString(),
     finished_at: new Date().toISOString(),
-    ok: totals.errors === 0,
+    ok: totals.errors === 0 && (totals.outagesInserted + totals.outagesUpdated + totals.historyInserted + totals.historyUpdated + totals.forecastsUpserted) > 0,
     items_found: totals.items,
     items_inserted: totals.historyInserted + totals.outagesInserted + totals.forecastsUpserted,
     items_updated: totals.historyUpdated + totals.outagesUpdated,
-    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors}`,
+    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed} fallback=${totals.fallbackUsed}`,
   });
 
   return {

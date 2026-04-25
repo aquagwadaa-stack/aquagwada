@@ -60,6 +60,83 @@ function forecastWindowForTimeline(f: Forecast, startOfDay: Date, endOfDay: Date
   return segmentPosition(startMs, endMs, startOfDay, endOfDay);
 }
 
+/**
+ * Regroupe les coupures qui partagent exactement le même créneau (même start/end)
+ * pour éviter d'empiler 3 barres identiques quand seuls les secteurs changent.
+ */
+type GroupedOutage = {
+  key: string;
+  commune_id: string;
+  starts_at: string;
+  ends_at: string | null;
+  status: Outage["status"];
+  source: Outage["source"];
+  estimated_duration_minutes: number | null;
+  reliability_score: number;
+  sectors: string[];
+  count: number;
+  primary: Outage;
+};
+
+function groupOutagesByWindow(items: Outage[]): GroupedOutage[] {
+  const map = new Map<string, GroupedOutage>();
+  for (const o of items) {
+    const start = new Date(o.starts_at).getTime();
+    const end = o.ends_at ? new Date(o.ends_at).getTime() : null;
+    const key = `${o.commune_id}|${start}|${end ?? "open"}`;
+    const existing = map.get(key);
+    const sector = (o.sector ?? "").trim();
+    if (existing) {
+      if (sector && !existing.sectors.includes(sector)) existing.sectors.push(sector);
+      existing.count++;
+      // garde la coupure la plus fiable comme primaire
+      if ((o.reliability_score ?? 0) > (existing.reliability_score ?? 0)) {
+        existing.primary = o;
+        existing.reliability_score = o.reliability_score;
+      }
+    } else {
+      map.set(key, {
+        key,
+        commune_id: o.commune_id,
+        starts_at: o.starts_at,
+        ends_at: o.ends_at,
+        status: o.status,
+        source: o.source,
+        estimated_duration_minutes: o.estimated_duration_minutes,
+        reliability_score: o.reliability_score ?? 0,
+        sectors: sector ? [sector] : [],
+        count: 1,
+        primary: o,
+      });
+    }
+  }
+  return [...map.values()];
+}
+
+/**
+ * Calcule un layout en "lanes" : les éléments qui se chevauchent sont
+ * empilés verticalement au lieu de se superposer.
+ * Renvoie pour chaque clé l'index de lane et le nombre total de lanes.
+ */
+function computeLanes<T extends { key: string; startMs: number; endMs: number }>(items: T[]): {
+  laneOf: Map<string, number>;
+  laneCount: number;
+} {
+  const sorted = [...items].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  const laneEnds: number[] = [];
+  const laneOf = new Map<string, number>();
+  for (const it of sorted) {
+    let placed = -1;
+    for (let i = 0; i < laneEnds.length; i++) {
+      if (laneEnds[i] <= it.startMs) { placed = i; break; }
+    }
+    if (placed === -1) { laneEnds.push(it.endMs); placed = laneEnds.length - 1; }
+    else laneEnds[placed] = it.endMs;
+    laneOf.set(it.key, placed);
+  }
+  return { laneOf, laneCount: Math.max(1, laneEnds.length) };
+}
+
 /** Affiche les coupures d'une journée sous forme de timeline horaire. */
 export function DayTimeline({
   date,
@@ -189,65 +266,121 @@ export function DayTimeline({
           )}
 
           {/* Mode classique : on rend toutes les coupures empilées */}
-          {!multiMode && outages.map((o) => {
-            const s = new Date(o.starts_at).getTime();
-            const end = outageEndForTimeline(o, endOfDay);
-            const e = end.getTime();
-            const segment = segmentPosition(s, e, startOfDay, endOfDay, 2);
-            if (!segment) return null;
-            const tone =
-              o.status === "ongoing" ? "bg-destructive/15 border-destructive/40"
-                : o.status === "resolved" ? "bg-success/10 border-success/40"
-                : o.status === "cancelled" ? "bg-muted border-border"
-                : "bg-warning/15 border-warning/50";
+          {!multiMode && (() => {
+            const grouped = groupOutagesByWindow(outages);
+            const layoutItems = grouped.map((g) => {
+              const s = new Date(g.starts_at).getTime();
+              const end = outageEndForTimeline(g.primary, endOfDay);
+              return { key: `o-${g.key}`, startMs: s, endMs: end.getTime(), g };
+            });
+            const { laneOf, laneCount } = computeLanes(layoutItems);
+            const laneHeight = 48;
+            const totalHeight = Math.max(laneHeight, laneCount * laneHeight + (laneCount - 1) * 6);
             return (
-              <div key={o.id} className="relative h-12">
-                <div className={`absolute top-0 h-full rounded-md border ${tone} p-1.5 overflow-hidden`} style={{ left: `${segment.left}%`, width: `${segment.width}%` }}>
-                  <div className="flex items-center gap-2 text-[11px] font-medium truncate">
-                    <Clock className="h-3 w-3 shrink-0" />
-                    <span>{formatHM(o.starts_at)}–{outageEndLabel(o, end)}</span>
-                    {o.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {o.commune.name}</span>}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground truncate">
-                    {o.sector || o.cause || o.description || "Coupure"}
-                  </div>
-                </div>
+              <div className="relative" style={{ height: totalHeight }}>
+                {layoutItems.map(({ key, g }) => {
+                  const s = new Date(g.starts_at).getTime();
+                  const end = outageEndForTimeline(g.primary, endOfDay);
+                  const segment = segmentPosition(s, end.getTime(), startOfDay, endOfDay, 2);
+                  if (!segment) return null;
+                  const lane = laneOf.get(key) ?? 0;
+                  const top = lane * (laneHeight + 6);
+                  const tone =
+                    g.status === "ongoing" ? "bg-destructive/15 border-destructive/40"
+                      : g.status === "resolved" ? "bg-success/10 border-success/40"
+                      : g.status === "cancelled" ? "bg-muted border-border"
+                      : "bg-warning/15 border-warning/50";
+                  const sectorLabel = g.sectors.length === 0
+                    ? (g.primary.cause || g.primary.description || "Coupure")
+                    : g.sectors.length <= 2
+                      ? `Secteur${g.sectors.length > 1 ? "s" : ""} ${g.sectors.join(", ")}`
+                      : `${g.sectors.length} secteurs concernés`;
+                  return (
+                    <div
+                      key={key}
+                      className={`absolute rounded-md border ${tone} p-1.5 overflow-hidden`}
+                      style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
+                    >
+                      <div className="flex items-center gap-2 text-[11px] font-medium truncate">
+                        <Clock className="h-3 w-3 shrink-0" />
+                        <span>{formatHM(g.starts_at)}–{outageEndLabel(g.primary, end)}</span>
+                        {g.primary.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {g.primary.commune.name}</span>}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground truncate">{sectorLabel}</div>
+                    </div>
+                  );
+                })}
               </div>
             );
-          })}
+          })()}
 
           {/* Forecasts (jaune, dashed) — mode classique */}
-          {!multiMode && dailyForecasts.map((f) => {
-            const segment = forecastWindowForTimeline(f, startOfDay, endOfDay);
-            if (!segment) return null;
-            const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
+          {!multiMode && dailyForecasts.length > 0 && (() => {
+            const items = dailyForecasts.map((f) => {
+              const seg = forecastWindowForTimeline(f, startOfDay, endOfDay);
+              if (!seg) return null;
+              const startMs = startOfDay.getTime() + (seg.left / 100) * dayMs;
+              const endMs = startMs + (seg.width / 100) * dayMs;
+              return { key: `f-${f.id}`, startMs, endMs, f, seg };
+            }).filter((x): x is NonNullable<typeof x> => x !== null);
+            const { laneOf, laneCount } = computeLanes(items);
+            const laneHeight = 48;
+            const totalHeight = Math.max(laneHeight, laneCount * laneHeight + (laneCount - 1) * 6);
             return (
-              <div key={f.id} className="relative h-12">
-                <div
-                  className={`absolute top-0 h-full rounded-md border-2 border-dashed ${intensity} p-1.5 overflow-hidden`}
-                  style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
-                  title={f.basis ?? "Prévision"}
-                >
-                  <div className="flex items-center gap-2 text-[11px] font-medium truncate">
-                    <Sparkles className="h-3 w-3 shrink-0" />
-                    <span>{f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)} · {Math.round(f.probability * 100)}%</span>
-                    {f.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {f.commune.name}</span>}
-                  </div>
-                  <div className="text-[10px] text-muted-foreground truncate">
-                    Prévision (confiance {Math.round(f.confidence * 100)}%)
-                  </div>
-                </div>
+              <div className="relative" style={{ height: totalHeight }}>
+                {items.map(({ key, f, seg }) => {
+                  const lane = laneOf.get(key) ?? 0;
+                  const top = lane * (laneHeight + 6);
+                  const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
+                  return (
+                    <div
+                      key={key}
+                      className={`absolute rounded-md border-2 border-dashed ${intensity} p-1.5 overflow-hidden`}
+                      style={{ left: `${seg.left}%`, width: `${seg.width}%`, top, height: laneHeight }}
+                      title={f.basis ?? "Prévision"}
+                    >
+                      <div className="flex items-center gap-2 text-[11px] font-medium truncate">
+                        <Sparkles className="h-3 w-3 shrink-0" />
+                        <span>{f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)} · {Math.round(f.probability * 100)}%</span>
+                        {f.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {f.commune.name}</span>}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground truncate">
+                        Prévision (confiance {Math.round(f.confidence * 100)}%)
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             );
-          })}
+          })()}
 
           {/* Mode multi-communes : une ligne par commune favorite */}
           {multiMode && communes!.map((c) => {
-            const cOutages = outages.filter((o) => o.commune_id === c.id);
+            const cOutagesRaw = outages.filter((o) => o.commune_id === c.id);
+            const cOutages = groupOutagesByWindow(cOutagesRaw);
             const cForecasts = dailyForecasts.filter((f) => f.commune_id === c.id);
             const isEmpty = cOutages.length === 0 && cForecasts.length === 0;
+
+            // Compute lanes : on mélange coupures + prévisions et on les empile.
+            const layoutItems: Array<{ key: string; startMs: number; endMs: number; type: "outage" | "forecast"; ref: GroupedOutage | Forecast }> = [];
+            for (const g of cOutages) {
+              const s = new Date(g.starts_at).getTime();
+              const end = outageEndForTimeline(g.primary, endOfDay);
+              layoutItems.push({ key: `o-${g.key}`, startMs: s, endMs: end.getTime(), type: "outage", ref: g });
+            }
+            for (const f of cForecasts) {
+              const seg = forecastWindowForTimeline(f, startOfDay, endOfDay);
+              if (!seg) continue;
+              const startMs = startOfDay.getTime() + (seg.left / 100) * dayMs;
+              const endMs = startMs + (seg.width / 100) * dayMs;
+              layoutItems.push({ key: `f-${f.id}`, startMs, endMs, type: "forecast", ref: f });
+            }
+            const { laneOf, laneCount } = computeLanes(layoutItems);
+            const laneHeight = 22; // px
+            const rowHeight = Math.max(40, laneCount * laneHeight + (laneCount - 1) * 4 + 8);
+
             return (
-              <div key={c.id} className="relative h-10 group">
+              <div key={c.id} className="relative group" style={{ height: rowHeight }}>
                 {/* Étiquette commune (en dehors du conteneur scaled grâce au marginLeft parent) */}
                 <div className="absolute right-full top-0 bottom-0 w-24 -ml-0 flex items-center pr-2 text-[11px] font-medium truncate text-foreground/80" style={{ marginRight: 0 }}>
                   <span className="truncate">{c.name}</span>
@@ -261,26 +394,33 @@ export function DayTimeline({
                     </span>
                   </div>
                 )}
-                {cOutages.map((o) => {
-                  const s = new Date(o.starts_at).getTime();
-                  const end = outageEndForTimeline(o, endOfDay);
+                {cOutages.map((g) => {
+                  const s = new Date(g.starts_at).getTime();
+                  const end = outageEndForTimeline(g.primary, endOfDay);
                   const e = end.getTime();
                   const segment = segmentPosition(s, e, startOfDay, endOfDay);
                   if (!segment) return null;
+                  const lane = laneOf.get(`o-${g.key}`) ?? 0;
+                  const top = 4 + lane * (laneHeight + 4);
                   const tone =
-                    o.status === "ongoing" ? "bg-destructive/25 border-destructive/50"
-                      : o.status === "resolved" ? "bg-success/20 border-success/50"
-                      : o.status === "cancelled" ? "bg-muted border-border"
+                    g.status === "ongoing" ? "bg-destructive/25 border-destructive/50"
+                      : g.status === "resolved" ? "bg-success/20 border-success/50"
+                      : g.status === "cancelled" ? "bg-muted border-border"
                       : "bg-warning/25 border-warning/50";
+                  const sectorLabel = g.sectors.length === 0
+                    ? ""
+                    : g.sectors.length <= 2
+                      ? ` · ${g.sectors.join(", ")}`
+                      : ` · ${g.sectors.length} secteurs`;
                   return (
                     <div
-                      key={o.id}
-                      className={`absolute top-1 bottom-1 rounded border ${tone} px-1 overflow-hidden flex items-center`}
-                      style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
-                       title={`${formatHM(o.starts_at)}–${outageEndLabel(o, end)} · ${o.sector || o.cause || "Coupure"}`}
+                      key={g.key}
+                      className={`absolute rounded border ${tone} px-1 overflow-hidden flex items-center`}
+                      style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
+                      title={`${formatHM(g.starts_at)}–${outageEndLabel(g.primary, end)}${sectorLabel}`}
                     >
                       <span className="text-[10px] font-medium truncate">
-                         {formatHM(o.starts_at)}–{outageEndLabel(o, end)}
+                         {formatHM(g.starts_at)}–{outageEndLabel(g.primary, end)}{sectorLabel}
                       </span>
                     </div>
                   );
@@ -288,12 +428,14 @@ export function DayTimeline({
                 {cForecasts.map((f) => {
                   const segment = forecastWindowForTimeline(f, startOfDay, endOfDay);
                   if (!segment) return null;
+                  const lane = laneOf.get(`f-${f.id}`) ?? 0;
+                  const top = 4 + lane * (laneHeight + 4);
                   const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
                   return (
                     <div
                       key={f.id}
-                      className={`absolute top-1 bottom-1 rounded border border-dashed ${intensity} px-1 overflow-hidden flex items-center`}
-                      style={{ left: `${segment.left}%`, width: `${segment.width}%` }}
+                      className={`absolute rounded border border-dashed ${intensity} px-1 overflow-hidden flex items-center`}
+                      style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
                       title={`Prévision ${Math.round(f.probability * 100)}% · ${f.basis ?? ""}`}
                     >
                       <span className="text-[10px] font-medium truncate flex items-center gap-1">
