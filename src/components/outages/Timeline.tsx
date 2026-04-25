@@ -60,6 +60,83 @@ function forecastWindowForTimeline(f: Forecast, startOfDay: Date, endOfDay: Date
   return segmentPosition(startMs, endMs, startOfDay, endOfDay);
 }
 
+/**
+ * Regroupe les coupures qui partagent exactement le même créneau (même start/end)
+ * pour éviter d'empiler 3 barres identiques quand seuls les secteurs changent.
+ */
+type GroupedOutage = {
+  key: string;
+  commune_id: string;
+  starts_at: string;
+  ends_at: string | null;
+  status: Outage["status"];
+  source: Outage["source"];
+  estimated_duration_minutes: number | null;
+  reliability_score: number;
+  sectors: string[];
+  count: number;
+  primary: Outage;
+};
+
+function groupOutagesByWindow(items: Outage[]): GroupedOutage[] {
+  const map = new Map<string, GroupedOutage>();
+  for (const o of items) {
+    const start = new Date(o.starts_at).getTime();
+    const end = o.ends_at ? new Date(o.ends_at).getTime() : null;
+    const key = `${o.commune_id}|${start}|${end ?? "open"}`;
+    const existing = map.get(key);
+    const sector = (o.sector ?? "").trim();
+    if (existing) {
+      if (sector && !existing.sectors.includes(sector)) existing.sectors.push(sector);
+      existing.count++;
+      // garde la coupure la plus fiable comme primaire
+      if ((o.reliability_score ?? 0) > (existing.reliability_score ?? 0)) {
+        existing.primary = o;
+        existing.reliability_score = o.reliability_score;
+      }
+    } else {
+      map.set(key, {
+        key,
+        commune_id: o.commune_id,
+        starts_at: o.starts_at,
+        ends_at: o.ends_at,
+        status: o.status,
+        source: o.source,
+        estimated_duration_minutes: o.estimated_duration_minutes,
+        reliability_score: o.reliability_score ?? 0,
+        sectors: sector ? [sector] : [],
+        count: 1,
+        primary: o,
+      });
+    }
+  }
+  return [...map.values()];
+}
+
+/**
+ * Calcule un layout en "lanes" : les éléments qui se chevauchent sont
+ * empilés verticalement au lieu de se superposer.
+ * Renvoie pour chaque clé l'index de lane et le nombre total de lanes.
+ */
+function computeLanes<T extends { key: string; startMs: number; endMs: number }>(items: T[]): {
+  laneOf: Map<string, number>;
+  laneCount: number;
+} {
+  const sorted = [...items].sort((a, b) => a.startMs - b.startMs || a.endMs - b.endMs);
+  const laneEnds: number[] = [];
+  const laneOf = new Map<string, number>();
+  for (const it of sorted) {
+    let placed = -1;
+    for (let i = 0; i < laneEnds.length; i++) {
+      if (laneEnds[i] <= it.startMs) { placed = i; break; }
+    }
+    if (placed === -1) { laneEnds.push(it.endMs); placed = laneEnds.length - 1; }
+    else laneEnds[placed] = it.endMs;
+    laneOf.set(it.key, placed);
+  }
+  return { laneOf, laneCount: Math.max(1, laneEnds.length) };
+}
+
 /** Affiche les coupures d'une journée sous forme de timeline horaire. */
 export function DayTimeline({
   date,
