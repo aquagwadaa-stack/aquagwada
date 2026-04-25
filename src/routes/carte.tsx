@@ -110,9 +110,11 @@ function CartePage() {
     () => (communes.data ?? []).map((c) => ({ id: c.id, name: c.name })),
     [communes.data]
   );
-  // Visiteurs OU Business : toute la Guadeloupe. Free/Pro connecté : favoris.
-  const timelineCommunes = !user || tier === "business" ? allCommunes : favCommunes;
-  const timelineCommuneIds = timelineCommunes.map((c) => c.id);
+  // Pour les requêtes : Visiteurs/Business = toutes communes, sinon = favoris.
+  // Mais l'AFFICHAGE de la timeline ne montre QUE les communes ayant des
+  // données ce jour-là (sinon on retombe dans la "liste infinie" non utile).
+  const queryCommunes = !user || tier === "business" ? allCommunes : favCommunes;
+  const queryCommuneIds = queryCommunes.map((c) => c.id);
 
   // === Données pour le jour sélectionné ===
   const isPast = dayStart.getTime() < new Date().setHours(0, 0, 0, 0);
@@ -122,27 +124,27 @@ function CartePage() {
   // status non-résolus + jour du jour. Pour les jours passés on utilise
   // l'historique. Pour les jours futurs on n'affiche que les prévisions.
   const dayOutages = useQuery({
-    queryKey: ["outages-day", dayKey, timelineCommuneIds.join(",")],
-    queryFn: () => fetchOutagesWindow(dayStart.toISOString(), dayEnd.toISOString(), timelineCommuneIds.length > 0 ? timelineCommuneIds : undefined),
-    enabled: !isFuture && (communes.isSuccess || timelineCommuneIds.length > 0),
+    queryKey: ["outages-day", dayKey, queryCommuneIds.join(",")],
+    queryFn: () => fetchOutagesWindow(dayStart.toISOString(), dayEnd.toISOString(), queryCommuneIds.length > 0 ? queryCommuneIds : undefined),
+    enabled: !isFuture && (communes.isSuccess || queryCommuneIds.length > 0),
     staleTime: 60_000,
   });
 
   const dayHistory = useQuery({
-    queryKey: ["history-day", dayKey, timelineCommuneIds.join(",")],
-    queryFn: () => fetchHistoryRange(dayStart.toISOString(), dayEnd.toISOString(), timelineCommuneIds.length > 0 ? timelineCommuneIds : undefined),
-    enabled: isPast && (communes.isSuccess || timelineCommuneIds.length > 0),
+    queryKey: ["history-day", dayKey, queryCommuneIds.join(",")],
+    queryFn: () => fetchHistoryRange(dayStart.toISOString(), dayEnd.toISOString(), queryCommuneIds.length > 0 ? queryCommuneIds : undefined),
+    enabled: isPast && (communes.isSuccess || queryCommuneIds.length > 0),
     staleTime: 5 * 60_000,
   });
 
   const dayForecasts = useQuery({
-    queryKey: ["forecasts-day", dayKey, timelineCommuneIds.join(",")],
+    queryKey: ["forecasts-day", dayKey, queryCommuneIds.join(",")],
     queryFn: () => fetchForecastsRange(
       dayStart.toISOString().slice(0, 10),
       dayStart.toISOString().slice(0, 10),
-      timelineCommuneIds.length > 0 ? timelineCommuneIds : undefined,
+      queryCommuneIds.length > 0 ? queryCommuneIds : undefined,
     ),
-    enabled: showForecasts && isFuture && (communes.isSuccess || timelineCommuneIds.length > 0),
+    enabled: showForecasts && isFuture && (communes.isSuccess || queryCommuneIds.length > 0),
     staleTime: 5 * 60_000,
   });
 
@@ -168,6 +170,18 @@ function CartePage() {
     }
     return dayOutages.data ?? [];
   }, [isPast, isFuture, dayHistory.data, dayOutages.data]);
+
+  // Timeline COMPACTE : on ne garde que les communes qui ont au moins
+  // une coupure ou une prévision pour le jour sélectionné.
+  const timelineCommunes = useMemo(() => {
+    const active = new Set<string>();
+    for (const o of timelineOutages) active.add(o.commune_id);
+    if (showForecasts && isFuture) {
+      for (const f of (dayForecasts.data ?? [])) active.add(f.commune_id);
+    }
+    if (active.size === 0) return [];
+    return queryCommunes.filter((c) => active.has(c.id));
+  }, [timelineOutages, dayForecasts.data, showForecasts, isFuture, queryCommunes]);
 
   // Pour l'historique panel : si Business → toutes communes, sinon favs
   const historyCommuneIds = tier === "business" || !user ? allCommunes.map((c) => c.id) : favIds;
@@ -298,7 +312,7 @@ function CartePage() {
               lockedCtaText="Essai gratuit Pro 7j · sans CB"
               lockedCtaTo="/abonnements"
               teaserHours={1}
-              communes={timelineCommunes.length > 0 ? timelineCommunes : undefined}
+              communes={timelineCommunes}
             />
           )}
         </section>
