@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { fetchHistory, type HistoryEntry } from "@/lib/queries/history";
 import { PLAN_CAPS, type Tier } from "@/lib/subscription";
@@ -15,21 +16,24 @@ import { formatDuration } from "@/lib/format";
 export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: string[] }) {
   const caps = PLAN_CAPS[tier];
   const days = caps.historyDays;
+  const PAGE_SIZE = 25;
+  const [page, setPage] = useState(1);
 
   const q = useQuery({
-    queryKey: ["history", tier, communeIds.join(","), days],
-    queryFn: () => fetchHistory({ communeIds, daysBack: days, page: 1, pageSize: 20 }),
+    queryKey: ["history", tier, communeIds.join(","), days, page],
+    queryFn: () => fetchHistory({ communeIds, daysBack: days, page, pageSize: PAGE_SIZE }),
     enabled: communeIds.length > 0,
     staleTime: 5 * 60_000,
   });
 
   const rows: HistoryEntry[] = q.data?.rows ?? [];
   const total = q.data?.total ?? 0;
+  const hasMore = page * PAGE_SIZE < total;
 
   const labelDuree =
     tier === "free" ? "7 derniers jours"
-      : tier === "pro" ? "6 mois d'historique"
-        : "5 ans d'historique";
+      : tier === "pro" ? "1 an d'historique"
+        : "3 ans d'historique";
 
   // Stats agrégées rapides
   const stats = (() => {
@@ -131,14 +135,14 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
           <Lock className="h-3.5 w-3.5 text-primary" />
           <span className="flex-1">
             Plan gratuit : 7 jours d'historique.{" "}
-            <Link to="/abonnements" className="text-primary font-medium underline">Pro = 6 mois</Link>,{" "}
-            Business = 5 ans.
+            <Link to="/abonnements" className="text-primary font-medium underline">Pro = 1 an</Link>,{" "}
+            Business = 3 ans.
           </span>
         </div>
       )}
       {tier === "pro" && (
         <p className="text-[11px] text-muted-foreground text-center">
-          Pro : 6 mois d'historique · <Link to="/abonnements" className="text-primary underline">Business = 5 ans</Link>
+          Pro : 1 an d'historique · <Link to="/abonnements" className="text-primary underline">Business = 3 ans</Link>
         </p>
       )}
     </section>
