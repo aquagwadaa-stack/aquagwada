@@ -17,6 +17,7 @@ const HISTORY_DAYS_RECENT = 60;         // pour calcul de tendance
 const FORECAST_DAYS = 14;
 const MIN_SAMPLE_FOR_PREDICTION = 2;
 const MIN_PROBABILITY_KEEP = 0.03;
+const OFFICIAL_BASIS_PREFIX = "Planning officiel SMGEAG";
 /**
  * Plafond sur les prévisions purement statistiques. Au-delà on bascule
  * dans une zone de fausse certitude qui dessert les utilisateurs. Les
@@ -24,6 +25,11 @@ const MIN_PROBABILITY_KEEP = 0.03;
  * SMGEAG…") gardent leur 0.95-0.98 puisqu'ils sont déterministes.
  */
 const STATISTICAL_PROBABILITY_CAP = 0.75;
+
+async function supportsForecastKindColumn(): Promise<boolean> {
+  const { error } = await supabaseAdmin.from("forecasts").select("kind").limit(1);
+  return !error;
+}
 
 type HistRow = {
   commune_id: string;
@@ -162,11 +168,20 @@ export async function generateForecasts(): Promise<{ generated: number; communes
   }
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  await supabaseAdmin
-    .from("forecasts")
-    .delete()
-    .gte("forecast_date", today.toISOString().slice(0, 10))
-    .not("basis", "like", "Planning officiel SMGEAG%");
+  const todayIso = today.toISOString().slice(0, 10);
+  const supportsForecastKind = await supportsForecastKindColumn();
+  const deleteResult = supportsForecastKind
+    ? await supabaseAdmin
+      .from("forecasts")
+      .delete()
+      .gte("forecast_date", todayIso)
+      .eq("kind", "statistical_forecast")
+    : await supabaseAdmin
+      .from("forecasts")
+      .delete()
+      .gte("forecast_date", todayIso)
+      .not("basis", "ilike", `${OFFICIAL_BASIS_PREFIX}%`);
+  if (deleteResult.error) throw deleteResult.error;
 
   let generated = 0;
   const trend_breakdown: Record<string, number> = { improving: 0, stable: 0, worsening: 0 };
@@ -246,7 +261,7 @@ export async function generateForecasts(): Promise<{ generated: number; communes
         dayBasis.push(trend === "improving" ? "tendance récente : en amélioration" : "tendance récente : en aggravation");
       }
 
-      rows.push({
+      const forecastRow: any = {
         commune_id: c.id,
         forecast_date: dateStr,
         window_start: winStart,
@@ -258,7 +273,9 @@ export async function generateForecasts(): Promise<{ generated: number; communes
         trend,
         day_of_week_signal: Number(dowSignal.toFixed(2)),
         basis: dayBasis.join(". ") + ".",
-      });
+      };
+      if (supportsForecastKind) forecastRow.kind = "statistical_forecast";
+      rows.push(forecastRow);
       generated++;
     }
   }

@@ -157,6 +157,7 @@ export async function dispatchNotifications(): Promise<{
 
         for (const ch of channels) {
           const isPush = ch === "push";
+          let pushResult: { sent: number; removed: number } | null = null;
           // Push : envoi réel (gratuit, instantané) ; autres canaux : dry-run.
           if (isPush) {
             const commune = await supabaseAdmin.from("communes").select("name").eq("id", o.commune_id).maybeSingle();
@@ -179,19 +180,28 @@ export async function dispatchNotifications(): Promise<{
               url: "/ma-commune",
               tag: `${kind}-${o.id}`,
             };
-            try { await sendPushToUser(p.user_id, payload); } catch (e) { console.warn("[push] dispatch err", e); }
+            try {
+              pushResult = await sendPushToUser(p.user_id, payload);
+            } catch (e) {
+              skipped += 1;
+              console.warn("[push] dispatch err", e);
+              continue;
+            }
           }
+          const pushSent = isPush && (pushResult?.sent ?? 0) > 0;
           const { error } = await supabaseAdmin.from("notification_logs").insert({
             user_id: p.user_id,
             outage_id: o.id,
             channel: ch,
             kind,
-            dry_run: !isPush,
+            dry_run: isPush ? !pushSent : true,
             payload: {
               commune_id: o.commune_id,
               starts_at: o.starts_at,
               ends_at: o.ends_at,
-              note: isPush ? "push envoyé via VAPID" : "dry-run: aucun envoi réel tant que le domaine email/SMS n'est pas configuré",
+              note: isPush
+                ? `push ${pushSent ? "envoyé" : "non envoyé"} via VAPID (${pushResult?.sent ?? 0} appareil notifié, ${pushResult?.removed ?? 0} abonnement expiré retiré)`
+                : "dry-run: aucun envoi réel tant que le domaine email/SMS n'est pas configuré",
             },
           });
           // Conflit unique = déjà envoyé, on saute silencieusement

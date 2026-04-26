@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, Clock, Lock, MapPin, Plus, Sparkles } from "lucide-react";
@@ -69,15 +69,34 @@ export function OutageTimeline({
   }, [today, backDays, forwardDays]);
 
   const todayIndex = backDays;
+  const [responsiveVisibleCount, setResponsiveVisibleCount] = useState(visibleCount);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    function computeVisibleCount() {
+      const width = window.innerWidth;
+      if (width >= 1280) return Math.max(visibleCount, 6);
+      if (width >= 1024) return Math.max(visibleCount, 5);
+      if (width >= 640) return Math.max(visibleCount, 4);
+      return visibleCount;
+    }
+
+    const update = () => setResponsiveVisibleCount(computeVisibleCount());
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [visibleCount]);
+
+  const effectiveVisibleCount = Math.min(days.length, Math.max(1, responsiveVisibleCount));
   const [selectedIdx, setSelectedIdx] = useState(todayIndex);
   // Position du curseur de défilement (index de la 1ère case visible).
   // Aujourd'hui doit être en position visible 4 (index 3) → cursor = todayIndex - 3.
-  const idealCursor = Math.max(0, todayIndex - 3);
+  const preferredTodaySlot = Math.min(3, effectiveVisibleCount - 1);
+  const idealCursor = Math.max(0, todayIndex - preferredTodaySlot);
   const [cursor, setCursor] = useState(idealCursor);
 
-  // Adapt visibleCount selon viewport via classe (juste un display) — on garde 3 par défaut.
-  // Ici on raisonne sur visibleCount fixe et on laisse Tailwind faire l'overflow.
-  const maxCursor = Math.max(0, days.length - visibleCount);
+  // Le nombre de jours visibles est responsive : compact sur ordinateur, lisible sur mobile.
+  const maxCursor = Math.max(0, days.length - effectiveVisibleCount);
   const clampedCursor = Math.min(Math.max(0, cursor), maxCursor);
 
   function isAccessible(i: number): boolean {
@@ -99,10 +118,10 @@ export function OutageTimeline({
   // S'assurer que la case sélectionnée reste visible.
   useEffect(() => {
     if (selectedIdx < clampedCursor) setCursor(selectedIdx);
-    else if (selectedIdx > clampedCursor + visibleCount - 1) {
-      setCursor(selectedIdx - visibleCount + 1);
+    else if (selectedIdx > clampedCursor + effectiveVisibleCount - 1) {
+      setCursor(selectedIdx - effectiveVisibleCount + 1);
     }
-  }, [selectedIdx, clampedCursor, visibleCount]);
+  }, [selectedIdx, clampedCursor, effectiveVisibleCount]);
 
   const selected = days[selectedIdx] ?? today;
   const dayStart = useMemo(() => {
@@ -176,6 +195,7 @@ export function OutageTimeline({
     (isFuture && showForecasts && dayForecasts.isLoading);
 
   const noCommunes = communes.length === 0;
+  const dayGapPx = 6;
 
   return (
     <section className="rounded-2xl border border-border bg-card shadow-soft overflow-hidden">
@@ -217,7 +237,7 @@ export function OutageTimeline({
           <div
             className="flex gap-1.5 transition-transform duration-200 ease-out"
             style={{
-              transform: `translateX(calc(${-clampedCursor} * (100% / ${visibleCount})))`,
+              transform: `translateX(calc(${-clampedCursor} * (((100% - ${(effectiveVisibleCount - 1) * dayGapPx}px) / ${effectiveVisibleCount}) + ${dayGapPx}px)))`,
             }}
           >
             {days.map((d, i) => {
@@ -249,8 +269,8 @@ export function OutageTimeline({
 
               const baseClass =
                 "shrink-0 flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-xs transition-colors min-w-0";
-              const styleStr: React.CSSProperties = {
-                flex: `0 0 calc((100% - ${(visibleCount - 1) * 6}px) / ${visibleCount})`,
+              const styleStr: CSSProperties = {
+                flex: `0 0 calc((100% - ${(effectiveVisibleCount - 1) * dayGapPx}px) / ${effectiveVisibleCount})`,
               };
               const stateClass = isSel
                 ? "bg-primary text-primary-foreground border-primary shadow-soft"

@@ -8,12 +8,13 @@ type CleanupSummary = {
   deduped_forecasts?: number;
 };
 
-export async function cleanupHistory(): Promise<CleanupSummary & { archived: number; deleted: number; expiredArchived: number }> {
+export async function cleanupHistory(): Promise<CleanupSummary & { archived: number; deleted: number; expiredArchived: number; warnings?: string[] }> {
+  const warnings: string[] = [];
   const { data: cleanupData, error: cleanupError } = await (supabaseAdmin as any).rpc("cleanup_outage_data");
-  if (cleanupError) throw cleanupError;
+  if (cleanupError) warnings.push(`cleanup_outage_data: ${cleanupError.message}`);
 
   const { data: expiredArchived, error: expiredError } = await (supabaseAdmin as any).rpc("archive_expired_outages");
-  if (expiredError) throw expiredError;
+  if (expiredError) warnings.push(`archive_expired_outages: ${expiredError.message}`);
 
   const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString();
 
@@ -41,7 +42,16 @@ export async function cleanupHistory(): Promise<CleanupSummary & { archived: num
       confidence_score: outage.confidence_score,
       time_precision: outage.time_precision,
     }));
-    const { error } = await supabaseAdmin.from("outage_history").upsert(rows, {
+    const rowsByExternalId = new Map<string, (typeof rows)[number]>();
+    const archiveRows = rows.filter((row) => {
+      if (!row.external_id) return true;
+      if (rowsByExternalId.has(row.external_id)) return false;
+      rowsByExternalId.set(row.external_id, row);
+      return false;
+    });
+    archiveRows.push(...rowsByExternalId.values());
+
+    const { error } = await supabaseAdmin.from("outage_history").upsert(archiveRows, {
       onConflict: "external_id",
       ignoreDuplicates: false,
     });
@@ -62,5 +72,6 @@ export async function cleanupHistory(): Promise<CleanupSummary & { archived: num
     expiredArchived: Number(expiredArchived ?? 0),
     archived: toArchive?.length ?? 0,
     deleted: deleted?.length ?? 0,
+    ...(warnings.length ? { warnings } : {}),
   };
 }

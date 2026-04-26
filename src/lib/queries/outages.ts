@@ -56,9 +56,9 @@ export async function fetchOutagesWindow(fromIso: string, toIso: string, commune
     .filter((o) => new Date(o.starts_at).getTime() <= toMs && effectiveEndMs(o) >= fromMs);
 }
 
-export async function fetchOngoingOutages(): Promise<Outage[]> {
+export async function fetchOngoingOutages(communeIds?: string[]): Promise<Outage[]> {
   const nowIso = new Date().toISOString();
-  const { data, error } = await supabase
+  let q = supabase
     .from("outages")
     .select("*, commune:communes(name,slug)")
     .lte("starts_at", nowIso)
@@ -66,6 +66,8 @@ export async function fetchOngoingOutages(): Promise<Outage[]> {
     .neq("status", "resolved")
     .neq("status", "cancelled")
     .order("starts_at", { ascending: false });
+  if (communeIds && communeIds.length) q = q.in("commune_id", communeIds);
+  const { data, error } = await q;
   if (error) throw error;
   return ((data ?? []) as unknown as Outage[])
     .map(normalizeOutageStatus)
