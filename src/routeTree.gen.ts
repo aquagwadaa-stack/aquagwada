@@ -18,6 +18,7 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AbonnementsRouteImport } from './routes/abonnements'
 import { Route as AProposRouteImport } from './routes/a-propos'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api.public.payments.webhook'
 import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
 import { Route as ApiPublicJobsScrapeSmgeagRouteImport } from './routes/api.public.jobs.scrape-smgeag'
 import { Route as ApiPublicJobsScrapePlanningRouteImport } from './routes/api.public.jobs.scrape-planning'
@@ -74,6 +75,12 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicPaymentsWebhookRoute =
+  ApiPublicPaymentsWebhookRouteImport.update({
+    id: '/api/public/payments/webhook',
+    path: '/api/public/payments/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicOutagesIngestRoute = ApiPublicOutagesIngestRouteImport.update({
   id: '/api/public/outages/ingest',
   path: '/api/public/outages/ingest',
@@ -154,6 +161,7 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -175,6 +183,7 @@ export interface FileRoutesByTo {
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -197,6 +206,7 @@ export interface FileRoutesById {
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -220,6 +230,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
+    | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -241,6 +252,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
+    | '/api/public/payments/webhook'
   id:
     | '__root__'
     | '/'
@@ -262,6 +274,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
+    | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -284,6 +297,7 @@ export interface RootRouteChildren {
   ApiPublicJobsScrapePlanningRoute: typeof ApiPublicJobsScrapePlanningRoute
   ApiPublicJobsScrapeSmgeagRoute: typeof ApiPublicJobsScrapeSmgeagRoute
   ApiPublicOutagesIngestRoute: typeof ApiPublicOutagesIngestRoute
+  ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -349,6 +363,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/payments/webhook': {
+      id: '/api/public/payments/webhook'
+      path: '/api/public/payments/webhook'
+      fullPath: '/api/public/payments/webhook'
+      preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/outages/ingest': {
@@ -445,7 +466,17 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicJobsScrapePlanningRoute: ApiPublicJobsScrapePlanningRoute,
   ApiPublicJobsScrapeSmgeagRoute: ApiPublicJobsScrapeSmgeagRoute,
   ApiPublicOutagesIngestRoute: ApiPublicOutagesIngestRoute,
+  ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
+
+import type { getRouter } from './router.tsx'
+import type { createStart } from '@tanstack/react-start'
+declare module '@tanstack/react-start' {
+  interface Register {
+    ssr: true
+    router: Awaited<ReturnType<typeof getRouter>>
+  }
+}
