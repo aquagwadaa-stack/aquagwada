@@ -656,6 +656,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      aquagwada_cron_headers: { Args: never; Returns: Json }
       archive_expired_outages: { Args: never; Returns: number }
       expire_overdue_trials: { Args: never; Returns: number }
       get_commune_status: {
