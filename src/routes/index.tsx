@@ -27,7 +27,7 @@ function Index() {
 
   const ongoing = useQuery({
     queryKey: ["ongoing"],
-    queryFn: fetchOngoingOutages,
+    queryFn: () => fetchOngoingOutages(),
     staleTime: 60_000,
   });
 

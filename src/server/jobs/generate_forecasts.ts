@@ -175,7 +175,7 @@ export async function generateForecasts(): Promise<{ generated: number; communes
       .from("forecasts")
       .delete()
       .gte("forecast_date", todayIso)
-      .eq("kind", "statistical_forecast")
+      .eq("kind" as never, "statistical_forecast" as never)
     : await supabaseAdmin
       .from("forecasts")
       .delete()

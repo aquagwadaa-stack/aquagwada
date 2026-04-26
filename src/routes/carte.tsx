@@ -63,7 +63,7 @@ function CarteAuthed() {
   const communes = useQuery({ queryKey: ["communes"], queryFn: fetchCommunes, staleTime: 5 * 60_000 });
   const ongoing = useQuery({
     queryKey: ["ongoing"],
-    queryFn: fetchOngoingOutages,
+    queryFn: () => fetchOngoingOutages(),
     refetchInterval: 120_000,
     staleTime: 60_000,
   });
