@@ -74,7 +74,7 @@ export function UpsellCard({ tier }: { tier: Tier }) {
           <h3 className="mt-1 font-display text-lg font-semibold">Passez à Pro pour :</h3>
           <ul className="mt-2 space-y-1 text-sm text-foreground/80">
             <li>• Suivre jusqu'à <strong>5 communes</strong></li>
-            <li>• Recevoir les alertes <strong>SMS et WhatsApp</strong></li>
+            <li>• Recevoir des alertes <strong>push illimitées</strong></li>
             <li>• Accéder aux <strong>prévisions à 14 jours</strong></li>
             <li>• Notifications préventives avant coupure</li>
           </ul>
