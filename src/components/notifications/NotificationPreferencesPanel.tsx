@@ -32,7 +32,7 @@ type Prefs = {
 
 const DEFAULT_PREFS: Prefs = {
   push_enabled: true,
-  email_enabled: true,
+  email_enabled: false,
   sms_enabled: false,
   whatsapp_enabled: false,
   notify_outage_start: true,
@@ -44,6 +44,8 @@ const DEFAULT_PREFS: Prefs = {
   quiet_hours_start: null,
   quiet_hours_end: null,
 };
+
+const EXTERNAL_MESSAGE_CHANNELS_ENABLED = false;
 
 function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
@@ -240,7 +242,7 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
       </div>
 
       {/* Téléphone : visible uniquement Pro / Business */}
-      {(caps.smsEnabled || caps.whatsappEnabled) && (
+      {EXTERNAL_MESSAGE_CHANNELS_ENABLED && (caps.smsEnabled || caps.whatsappEnabled) && (
         <div className="rounded-xl border border-border bg-muted/30 p-4">
           <Label htmlFor="phone" className="text-xs flex items-center gap-1.5">
             <Phone className="h-3.5 w-3.5" /> Numéro de téléphone (SMS / WhatsApp)
@@ -379,9 +381,6 @@ function NotifMatrix({
   const pushBlocked = pushPermission === "denied";
   const channels = [
     { key: "push" as const, label: "Push", icon: Bell, enabledKey: "push_enabled" as keyof Prefs, locked: pushBlocked, badge: "★ Recommandé", hint: "Gratuit, instantané" },
-    { key: "email" as const, label: "Email", icon: Mail, enabledKey: "email_enabled" as keyof Prefs, locked: false, badge: "Inclus", hint: "" },
-    { key: "sms" as const, label: "SMS", icon: MessageSquare, enabledKey: "sms_enabled" as keyof Prefs, locked: !caps.smsEnabled, badge: "Business", hint: "" },
-    { key: "whatsapp" as const, label: "WhatsApp", icon: MessageSquare, enabledKey: "whatsapp_enabled" as keyof Prefs, locked: !caps.whatsappEnabled, badge: "Business", hint: "" },
   ];
 
   return (
@@ -390,7 +389,7 @@ function NotifMatrix({
         Choisis quoi recevoir, et comment
       </p>
       <div className="overflow-x-auto rounded-xl border border-border">
-        <table className="w-full text-xs min-w-[520px]">
+        <table className="w-full text-xs min-w-[360px]">
           <thead>
             <tr className="bg-muted/40 text-muted-foreground">
               <th className="text-left px-3 py-2 font-medium">Événement</th>
@@ -497,6 +496,7 @@ function NotifMatrix({
       <p className="mt-2 text-[11px] text-muted-foreground">
         Coche d'abord les <strong>événements</strong>, puis les <strong>canaux</strong>. Un événement n'est envoyé que si son canal est aussi actif.
         Les notifications <strong>Push</strong> sont gratuites, illimitées et instantanées (recommandé).
+        Les emails, SMS et WhatsApp seront ajoutés après branchement des fournisseurs d'envoi.
       </p>
     </div>
   );

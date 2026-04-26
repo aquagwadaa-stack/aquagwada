@@ -81,7 +81,7 @@ export function ForecastTeaserLocked() {
             </Link>
           </div>
           <p className="mt-3 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-            <Clock className="h-3 w-3" /> Sans carte bancaire · sans engagement · annulable en 1 clic
+            <Clock className="h-3 w-3" /> Sans carte bancaire · sans engagement · aucun prélèvement pour l'instant
           </p>
         </div>
       </div>

@@ -75,6 +75,7 @@ function CarteAuthed() {
       const { data, error } = await supabase
         .from("user_communes")
         .select("commune_id, communes(id,name)")
+        .eq("user_id", user!.id)
         .order("position");
       if (error) throw error;
       return data ?? [];

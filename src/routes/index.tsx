@@ -52,6 +52,7 @@ function Index() {
       const { data, error } = await supabase
         .from("user_communes")
         .select("commune_id, communes(id,name)")
+        .eq("user_id", user!.id)
         .order("position");
       if (error) throw error;
       return data ?? [];
@@ -102,7 +103,7 @@ function Index() {
               Sachez quand l'eau revient. <span className="text-accent">Avant tout le monde.</span>
             </h1>
             <p className="mt-5 text-lg text-primary-foreground/80 max-w-2xl">
-              Suivi des coupures d'eau en Guadeloupe en temps réel : carte interactive, frise chronologique, prévisions à 14 jours et alertes par notification et email.
+              Suivi des coupures d'eau en Guadeloupe en temps réel : carte interactive, frise chronologique, prévisions à 14 jours et alertes push.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Button asChild size="lg" className="bg-accent text-accent-foreground hover:bg-accent/90">
@@ -146,7 +147,7 @@ function Index() {
       <section className="bg-secondary/40 border-y border-border/60">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 py-16 grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           <Feature icon={MapPin} title="Carte temps réel" desc="Visualisez d'un coup d'œil les communes touchées et la sévérité de chaque coupure." />
-          <Feature icon={Bell} title="Alertes intelligentes" desc="Notification push et email — au début de la coupure, à son retour, ou en préventif." />
+          <Feature icon={Bell} title="Alertes intelligentes" desc="Notifications push au début de la coupure, à son retour, ou en préventif selon votre plan." />
           <Feature icon={ShieldCheck} title="Sources vérifiées" desc="Données officielles agrégées avec un score de fiabilité, complétées par les signalements citoyens." />
           <div className="rounded-2xl border-2 border-accent/40 bg-gradient-to-br from-accent/10 to-primary/5 p-6 shadow-soft flex flex-col">
             <span className="grid h-10 w-10 place-items-center rounded-lg bg-accent text-accent-foreground"><Megaphone className="h-5 w-5" /></span>

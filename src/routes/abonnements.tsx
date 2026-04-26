@@ -97,7 +97,8 @@ const FEATURE_MATRIX: Array<{
   {
     key: "email",
     label: "Alertes par email",
-    pick: () => ({ kind: "check", sub: "Illimitées" }),
+    desc: "Canal prévu après branchement d'un fournisseur email",
+    pick: () => ({ kind: "text", value: "Bientôt", tone: "muted" }),
   },
   {
     key: "sms",
@@ -245,7 +246,7 @@ function PricingPage() {
                     {isBusiness
                       ? "Tarif final selon volume SMS / WhatsApp — sur devis"
                       : isPro
-                        ? `ou ${Number(p.price_eur_yearly).toFixed(0)} €/an (2 mois offerts)`
+                        ? `tarif prévu : ${Number(p.price_eur_yearly).toFixed(0)} €/an`
                         : "Pas de carte requise"}
                   </p>
                 </div>
@@ -275,7 +276,7 @@ function PricingPage() {
                   )
                 ) : isBusiness ? (
                   <Button asChild className="mt-6 w-full gap-2" variant="outline">
-                    <a href="mailto:contact@aquagwada.fr?subject=Demande%20de%20devis%20Business%20AquaGwada&body=Bonjour%2C%0A%0AJe%20souhaite%20un%20devis%20Business%20pour%20%3A%0A-%20Nombre%20de%20communes%20%3A%0A-%20Volume%20SMS%2Fmois%20estim%C3%A9%20%3A%0A-%20WhatsApp%20%3A%20oui%2Fnon%0A-%20Acc%C3%A8s%20API%20%3A%20oui%2Fnon%0A%0AMerci%20%21">
+                    <a href="mailto:aqua.gwadaa@gmail.com?subject=Demande%20de%20devis%20Business%20AquaGwada&body=Bonjour%2C%0A%0AJe%20souhaite%20un%20devis%20Business%20pour%20%3A%0A-%20Nombre%20de%20communes%20%3A%0A-%20Volume%20SMS%2Fmois%20estim%C3%A9%20%3A%0A-%20WhatsApp%20%3A%20oui%2Fnon%0A-%20Acc%C3%A8s%20API%20%3A%20oui%2Fnon%0A%0AMerci%20%21">
                       <Mail className="h-4 w-4" /> Demander un devis
                     </a>
                   </Button>
@@ -337,7 +338,7 @@ function PricingPage() {
           <div className="mt-14">
             <h2 className="font-display text-2xl font-semibold mb-1">Comparatif détaillé</h2>
             <p className="text-sm text-muted-foreground mb-4">
-              Tout ce qui est inclus, plan par plan. Les SMS / WhatsApp ne sont qu'un supplément <em>pour pros</em>.
+              Tout ce qui est inclus, plan par plan. Les SMS / WhatsApp sont sur devis, l'email arrive après branchement du fournisseur.
             </p>
             <div className="overflow-x-auto rounded-2xl border border-border bg-card shadow-soft">
               <table className="w-full text-sm">
@@ -384,7 +385,7 @@ function PricingPage() {
             <strong> 24h avant</strong> une coupure programmée → <strong>Pro à 5,99 €/mois</strong> (essai 7 jours sans CB).
           </p>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Paiement Stripe activé prochainement pour le plan Pro. Aucun prélèvement pour l'instant.
+            Paiement Stripe activé prochainement pour le plan Pro. Aucun prélèvement, facture mensuelle ou annulation payante pour l'instant.
           </p>
         </div>
       </section>

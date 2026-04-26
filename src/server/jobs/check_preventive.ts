@@ -2,8 +2,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 /**
  * Vérifie les prévisions à venir et détermine quels users devraient recevoir
- * une notification préventive. Pour l'instant : log seulement (pas de provider
- * SMS/Email branché). À brancher avec Resend/Twilio plus tard.
+ * une notification préventive. Pour l'instant : diagnostic seulement sur les
+ * préférences push, l'envoi réel passe par dispatch_notifications.
  */
 export async function checkPreventiveNotifications(): Promise<{ candidates: number }> {
   const now = new Date();
@@ -23,9 +23,9 @@ export async function checkPreventiveNotifications(): Promise<{ candidates: numb
   // 2. Charger les users avec préférences préventives + leurs communes
   const { data: prefs } = await supabaseAdmin
     .from("notification_preferences")
-    .select("user_id, preventive_hours_before, notify_preventive, email_enabled");
+    .select("user_id, preventive_hours_before, notify_preventive, push_enabled");
 
-  const optedIn = (prefs ?? []).filter((p) => p.notify_preventive && p.email_enabled);
+  const optedIn = (prefs ?? []).filter((p) => p.notify_preventive && p.push_enabled);
   if (optedIn.length === 0) return { candidates: 0 };
 
   const userIds = optedIn.map((p) => p.user_id);
@@ -57,7 +57,7 @@ export async function checkPreventiveNotifications(): Promise<{ candidates: numb
     }
   }
 
-  // TODO: brancher Resend / Twilio ici quand le user activera Email/SMS
+  // Diagnostic only: the protected dispatch job handles real push sends.
   console.log(`[preventive] ${candidates} notifications candidates`);
   return { candidates };
 }

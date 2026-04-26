@@ -2,11 +2,12 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendPushToUser, type PushPayload } from "@/server/notifications/send_push";
 
 /**
- * Job de dispatch des notifications (dry-run par défaut).
+ * Job de dispatch des notifications.
  *
  * - Lit `notification_preferences` pour respecter strictement les choix utilisateurs.
  * - Idempotent grâce à `notification_logs` (UNIQUE user_id, outage_id, kind, channel).
- * - Tant qu'aucun domaine email n'est branché, on log uniquement (`dry_run=true`).
+ * - Push envoyé réellement via VAPID.
+ * - Email/SMS/WhatsApp restent désactivés tant qu'un provider dédié n'est pas branché.
  *
  * Événements gérés :
  *  - outage_start  : coupure qui vient de débuter (≤ 5 min)
@@ -115,13 +116,6 @@ export async function dispatchNotifications(): Promise<{
         .in("user_id", userIds);
       const prefs = (prefsRows ?? []) as Pref[];
 
-      // Profils (téléphones)
-      const { data: profiles } = await supabaseAdmin
-        .from("profiles")
-        .select("id, phone")
-        .in("id", userIds);
-      const phoneById = new Map((profiles ?? []).map((p) => [p.id, p.phone] as const));
-
       for (const p of prefs) {
         candidates += 1;
 
@@ -148,60 +142,51 @@ export async function dispatchNotifications(): Promise<{
           skipped += 1; continue;
         }
 
-        const channels: Array<"email" | "sms" | "whatsapp" | "push"> = [];
-        if (p.email_enabled) channels.push("email");
-        if (p.sms_enabled && phoneById.get(p.user_id)) channels.push("sms");
-        if (p.whatsapp_enabled && phoneById.get(p.user_id)) channels.push("whatsapp");
+        const channels: Array<"push"> = [];
         if (p.push_enabled) channels.push("push");
         if (channels.length === 0) { skipped += 1; continue; }
 
         for (const ch of channels) {
-          const isPush = ch === "push";
           let pushResult: { sent: number; removed: number } | null = null;
-          // Push : envoi réel (gratuit, instantané) ; autres canaux : dry-run.
-          if (isPush) {
-            const commune = await supabaseAdmin.from("communes").select("name").eq("id", o.commune_id).maybeSingle();
-            const communeName = commune.data?.name ?? "votre commune";
-            const titles: Record<typeof kind, string> = {
-              outage_start: `🚱 Coupure d'eau à ${communeName}`,
-              water_back: `💧 Eau de retour à ${communeName}`,
-              preventive: `⏰ Coupure prévue à ${communeName}`,
-              preventive_water_back: `🔜 Eau bientôt de retour à ${communeName}`,
-            };
-            const bodies: Record<typeof kind, string> = {
-              outage_start: `Une coupure vient de débuter. Suis l'évolution dans l'app.`,
-              water_back: `L'eau a été rétablie. Pense à purger les premiers litres.`,
-              preventive: `Coupure planifiée le ${new Date(o.starts_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}.`,
-              preventive_water_back: `Retour de l'eau prévu vers ${o.ends_at ? new Date(o.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}.`,
-            };
-            const payload: PushPayload = {
-              title: titles[kind],
-              body: bodies[kind],
-              url: "/ma-commune",
-              tag: `${kind}-${o.id}`,
-            };
-            try {
-              pushResult = await sendPushToUser(p.user_id, payload);
-            } catch (e) {
-              skipped += 1;
-              console.warn("[push] dispatch err", e);
-              continue;
-            }
+          const commune = await supabaseAdmin.from("communes").select("name").eq("id", o.commune_id).maybeSingle();
+          const communeName = commune.data?.name ?? "votre commune";
+          const titles: Record<typeof kind, string> = {
+            outage_start: `🚱 Coupure d'eau à ${communeName}`,
+            water_back: `💧 Eau de retour à ${communeName}`,
+            preventive: `⏰ Coupure prévue à ${communeName}`,
+            preventive_water_back: `🔜 Eau bientôt de retour à ${communeName}`,
+          };
+          const bodies: Record<typeof kind, string> = {
+            outage_start: `Une coupure vient de débuter. Suis l'évolution dans l'app.`,
+            water_back: `L'eau a été rétablie. Pense à purger les premiers litres.`,
+            preventive: `Coupure planifiée le ${new Date(o.starts_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}.`,
+            preventive_water_back: `Retour de l'eau prévu vers ${o.ends_at ? new Date(o.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}.`,
+          };
+          const payload: PushPayload = {
+            title: titles[kind],
+            body: bodies[kind],
+            url: "/ma-commune",
+            tag: `${kind}-${o.id}`,
+          };
+          try {
+            pushResult = await sendPushToUser(p.user_id, payload);
+          } catch (e) {
+            skipped += 1;
+            console.warn("[push] dispatch err", e);
+            continue;
           }
-          const pushSent = isPush && (pushResult?.sent ?? 0) > 0;
+          const pushSent = (pushResult?.sent ?? 0) > 0;
           const { error } = await supabaseAdmin.from("notification_logs").insert({
             user_id: p.user_id,
             outage_id: o.id,
             channel: ch,
             kind,
-            dry_run: isPush ? !pushSent : true,
+            dry_run: !pushSent,
             payload: {
               commune_id: o.commune_id,
               starts_at: o.starts_at,
               ends_at: o.ends_at,
-              note: isPush
-                ? `push ${pushSent ? "envoyé" : "non envoyé"} via VAPID (${pushResult?.sent ?? 0} appareil notifié, ${pushResult?.removed ?? 0} abonnement expiré retiré)`
-                : "dry-run: aucun envoi réel tant que le domaine email/SMS n'est pas configuré",
+              note: `push ${pushSent ? "envoyé" : "non envoyé"} via VAPID (${pushResult?.sent ?? 0} appareil notifié, ${pushResult?.removed ?? 0} abonnement expiré retiré)`,
             },
           });
           // Conflit unique = déjà envoyé, on saute silencieusement

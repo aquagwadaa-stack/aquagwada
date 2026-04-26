@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { Droplets } from "lucide-react";
+import { Droplets, Mail } from "lucide-react";
 
 export function SiteFooter() {
   return (
@@ -33,7 +33,22 @@ export function SiteFooter() {
           </ul>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Avertissement</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Contact</p>
+          <a
+            href="mailto:aqua.gwadaa@gmail.com"
+            className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary"
+          >
+            <Mail className="h-4 w-4" />
+            aqua.gwadaa@gmail.com
+          </a>
+          <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
+            Une question, un partenariat ou une correction de donnée ? Écrivez-nous directement.
+          </p>
+        </div>
+      </div>
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 pb-8">
+        <div className="rounded-xl border border-border/60 bg-background/70 p-4">
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Avertissement</p>
           <p className="text-xs text-muted-foreground leading-relaxed">
             Les données présentées sont indicatives et issues de sources publiques, officielles et de signalements citoyens. Vérifiez auprès de votre fournisseur d'eau.
           </p>

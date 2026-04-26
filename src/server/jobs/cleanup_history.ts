@@ -8,13 +8,16 @@ type CleanupSummary = {
   deduped_forecasts?: number;
 };
 
-export async function cleanupHistory(): Promise<CleanupSummary & { archived: number; deleted: number; expiredArchived: number; warnings?: string[] }> {
+export async function cleanupHistory(): Promise<CleanupSummary & { archived: number; deleted: number; expiredArchived: number; expiredTrials: number; warnings?: string[] }> {
   const warnings: string[] = [];
   const { data: cleanupData, error: cleanupError } = await (supabaseAdmin as any).rpc("cleanup_outage_data");
   if (cleanupError) warnings.push(`cleanup_outage_data: ${cleanupError.message}`);
 
   const { data: expiredArchived, error: expiredError } = await (supabaseAdmin as any).rpc("archive_expired_outages");
   if (expiredError) warnings.push(`archive_expired_outages: ${expiredError.message}`);
+
+  const { data: expiredTrials, error: trialsError } = await (supabaseAdmin as any).rpc("expire_overdue_trials");
+  if (trialsError) warnings.push(`expire_overdue_trials: ${trialsError.message}`);
 
   const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString();
 
@@ -70,6 +73,7 @@ export async function cleanupHistory(): Promise<CleanupSummary & { archived: num
   return {
     ...((cleanupData as CleanupSummary | null) ?? {}),
     expiredArchived: Number(expiredArchived ?? 0),
+    expiredTrials: Number(expiredTrials ?? 0),
     archived: toArchive?.length ?? 0,
     deleted: deleted?.length ?? 0,
     ...(warnings.length ? { warnings } : {}),

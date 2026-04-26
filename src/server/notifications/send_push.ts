@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 function configure() {
   const pub = process.env.VAPID_PUBLIC_KEY;
   const priv = process.env.VAPID_PRIVATE_KEY;
-  const sub = process.env.VAPID_SUBJECT || "mailto:contact@aquagwada.fr";
+  const sub = process.env.VAPID_SUBJECT || "mailto:aqua.gwadaa@gmail.com";
   if (!pub || !priv) throw new Error("VAPID keys missing");
   webpush.setVapidDetails(sub, pub, priv);
 }

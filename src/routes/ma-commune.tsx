@@ -82,6 +82,7 @@ function Authed() {
       const { data, error } = await supabase
         .from("user_communes")
         .select("id, commune_id, position, communes(id,name,slug,latitude,longitude)")
+        .eq("user_id", user!.id)
         .order("position");
       if (error) throw error;
       return data ?? [];
@@ -99,8 +100,8 @@ function Authed() {
   const reachedLimit = favIds.length >= caps.maxCommunes;
 
   const ongoing = useQuery({
-    queryKey: ["ongoing-favs", favIds],
-    queryFn: fetchOngoingOutages,
+    queryKey: ["ongoing-favs", favIds.join(",")],
+    queryFn: () => fetchOngoingOutages(favIds),
     enabled: favIds.length > 0,
   });
 
@@ -121,7 +122,7 @@ function Authed() {
   }
 
   async function removeFav(id: string) {
-    const { error } = await supabase.from("user_communes").delete().eq("id", id);
+    const { error } = await supabase.from("user_communes").delete().eq("id", id).eq("user_id", user!.id);
     if (error) return toast.error(error.message);
     qc.invalidateQueries({ queryKey: ["favs"] });
   }
@@ -152,7 +153,7 @@ function Authed() {
               {new Date(trialEndsAt).toLocaleDateString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" })}.
               Vous bénéficiez de toutes les fonctionnalités Pro.
             </p>
-            <Link to="/abonnements" className="text-xs font-semibold text-primary underline">Confirmer Pro</Link>
+            <Link to="/abonnements" className="text-xs font-semibold text-primary underline">Voir les options</Link>
           </div>
         )}
         {trialExpired && (
@@ -161,7 +162,7 @@ function Authed() {
             <p className="flex-1">
               Votre essai Pro est <strong>expiré</strong>. Vous êtes revenu au plan gratuit.
             </p>
-            <Link to="/abonnements" className="text-xs font-semibold text-primary underline">Reprendre Pro</Link>
+            <Link to="/abonnements" className="text-xs font-semibold text-primary underline">Voir Pro</Link>
           </div>
         )}
         {tier === "free" && !trialExpired && (
