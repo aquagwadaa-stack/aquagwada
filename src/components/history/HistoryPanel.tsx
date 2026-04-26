@@ -38,12 +38,11 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
   // Stats agrégées rapides
   const stats = (() => {
     if (rows.length === 0) return null;
-    const communesSet = new Set(rows.map((r) => r.commune_id));
     const totalMin = rows.reduce((s, r) => s + (r.duration_minutes || 0), 0);
     const oldest = rows[rows.length - 1]?.starts_at;
     const newest = rows[0]?.starts_at;
     return {
-      communes: communesSet.size,
+      communes: communeIds.length,
       totalMin,
       oldest: oldest ? new Date(oldest) : null,
       newest: newest ? new Date(newest) : null,
@@ -69,7 +68,7 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
             <div className="mt-0.5 font-semibold text-foreground">{total}</div>
           </div>
           <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
-            <div className="flex items-center gap-1 text-muted-foreground"><MapPin className="h-3 w-3" /> Communes</div>
+            <div className="flex items-center gap-1 text-muted-foreground"><MapPin className="h-3 w-3" /> Communes suivies</div>
             <div className="mt-0.5 font-semibold text-foreground">{stats.communes}</div>
           </div>
           <div className="rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
