@@ -532,7 +532,10 @@ export type Database = {
           created_at: string
           current_period_end: string | null
           current_period_start: string | null
+          environment: string
           id: string
+          price_id: string | null
+          product_id: string | null
           status: Database["public"]["Enums"]["subscription_status"]
           stripe_customer_id: string | null
           stripe_subscription_id: string | null
@@ -546,7 +549,10 @@ export type Database = {
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
+          environment?: string
           id?: string
+          price_id?: string | null
+          product_id?: string | null
           status?: Database["public"]["Enums"]["subscription_status"]
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -560,7 +566,10 @@ export type Database = {
           created_at?: string
           current_period_end?: string | null
           current_period_start?: string | null
+          environment?: string
           id?: string
+          price_id?: string | null
+          product_id?: string | null
           status?: Database["public"]["Enums"]["subscription_status"]
           stripe_customer_id?: string | null
           stripe_subscription_id?: string | null
@@ -670,6 +679,10 @@ export type Database = {
         }[]
       }
       get_effective_subscription: { Args: never; Returns: Json }
+      has_active_subscription: {
+        Args: { check_env?: string; user_uuid: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

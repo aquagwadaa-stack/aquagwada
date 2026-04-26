@@ -18,6 +18,8 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AbonnementsRouteImport } from './routes/abonnements'
 import { Route as AProposRouteImport } from './routes/a-propos'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
+import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api.public.payments.webhook'
 import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
 import { Route as ApiPublicJobsScrapeSmgeagRouteImport } from './routes/api.public.jobs.scrape-smgeag'
 import { Route as ApiPublicJobsScrapePlanningRouteImport } from './routes/api.public.jobs.scrape-planning'
@@ -74,6 +76,17 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CheckoutReturnRoute = CheckoutReturnRouteImport.update({
+  id: '/checkout/return',
+  path: '/checkout/return',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ApiPublicPaymentsWebhookRoute =
+  ApiPublicPaymentsWebhookRouteImport.update({
+    id: '/api/public/payments/webhook',
+    path: '/api/public/payments/webhook',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicOutagesIngestRoute = ApiPublicOutagesIngestRouteImport.update({
   id: '/api/public/outages/ingest',
   path: '/api/public/outages/ingest',
@@ -144,6 +157,7 @@ export interface FileRoutesByFullPath {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -154,6 +168,7 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -165,6 +180,7 @@ export interface FileRoutesByTo {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -175,6 +191,7 @@ export interface FileRoutesByTo {
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -187,6 +204,7 @@ export interface FileRoutesById {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/checkout/return': typeof CheckoutReturnRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -197,6 +215,7 @@ export interface FileRoutesById {
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
+  '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -210,6 +229,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/checkout/return'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -220,6 +240,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
+    | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -231,6 +252,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/checkout/return'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -241,6 +263,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
+    | '/api/public/payments/webhook'
   id:
     | '__root__'
     | '/'
@@ -252,6 +275,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/checkout/return'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -262,6 +286,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
     | '/api/public/outages/ingest'
+    | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -274,6 +299,7 @@ export interface RootRouteChildren {
   ConfidentialiteRoute: typeof ConfidentialiteRoute
   ConnexionRoute: typeof ConnexionRoute
   MaCommuneRoute: typeof MaCommuneRoute
+  CheckoutReturnRoute: typeof CheckoutReturnRoute
   ApiPublicJobsBackfillPlanningRoute: typeof ApiPublicJobsBackfillPlanningRoute
   ApiPublicJobsCheckPreventiveRoute: typeof ApiPublicJobsCheckPreventiveRoute
   ApiPublicJobsCleanupHistoryRoute: typeof ApiPublicJobsCleanupHistoryRoute
@@ -284,6 +310,7 @@ export interface RootRouteChildren {
   ApiPublicJobsScrapePlanningRoute: typeof ApiPublicJobsScrapePlanningRoute
   ApiPublicJobsScrapeSmgeagRoute: typeof ApiPublicJobsScrapeSmgeagRoute
   ApiPublicOutagesIngestRoute: typeof ApiPublicOutagesIngestRoute
+  ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -349,6 +376,20 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/checkout/return': {
+      id: '/checkout/return'
+      path: '/checkout/return'
+      fullPath: '/checkout/return'
+      preLoaderRoute: typeof CheckoutReturnRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/payments/webhook': {
+      id: '/api/public/payments/webhook'
+      path: '/api/public/payments/webhook'
+      fullPath: '/api/public/payments/webhook'
+      preLoaderRoute: typeof ApiPublicPaymentsWebhookRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/outages/ingest': {
@@ -434,6 +475,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfidentialiteRoute: ConfidentialiteRoute,
   ConnexionRoute: ConnexionRoute,
   MaCommuneRoute: MaCommuneRoute,
+  CheckoutReturnRoute: CheckoutReturnRoute,
   ApiPublicJobsBackfillPlanningRoute: ApiPublicJobsBackfillPlanningRoute,
   ApiPublicJobsCheckPreventiveRoute: ApiPublicJobsCheckPreventiveRoute,
   ApiPublicJobsCleanupHistoryRoute: ApiPublicJobsCleanupHistoryRoute,
@@ -445,16 +487,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicJobsScrapePlanningRoute: ApiPublicJobsScrapePlanningRoute,
   ApiPublicJobsScrapeSmgeagRoute: ApiPublicJobsScrapeSmgeagRoute,
   ApiPublicOutagesIngestRoute: ApiPublicOutagesIngestRoute,
+  ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
