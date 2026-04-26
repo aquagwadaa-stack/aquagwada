@@ -8,6 +8,8 @@ import { useAuth } from "@/providers/AuthProvider";
 import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscription";
 import { toast } from "sonner";
 import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { StripeEmbeddedCheckoutForm } from "@/components/payments/StripeEmbeddedCheckout";
 
 type PlanRow = {
   id: string;
@@ -152,6 +154,7 @@ function PricingPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const sub = useQuery({
     queryKey: ["subscription", user?.id ?? "anon"],
@@ -193,6 +196,15 @@ function PricingPage() {
   }
 
   const trialActive = !!sub.data?.trialActive;
+  const isAlreadyPro = sub.data?.tier === "pro" || sub.data?.tier === "business";
+
+  function openCheckout() {
+    if (!user) {
+      navigate({ to: "/connexion" });
+      return;
+    }
+    setCheckoutOpen(true);
+  }
 
   return (
     <AppShell>
@@ -261,18 +273,32 @@ function PricingPage() {
                 </ul>
 
                 {isPro ? (
-                  trialActive ? (
+                  isAlreadyPro && !trialActive ? (
                     <Button disabled className="mt-6 w-full" variant="outline">
-                      Essai en cours
+                      Abonnement actif
                     </Button>
                   ) : (
-                    <Button
-                      onClick={handleStartTrial}
-                      disabled={busy}
-                      className="mt-6 w-full bg-gradient-ocean text-primary-foreground"
-                    >
-                      {busy ? "…" : "Démarrer mon essai 7 jours"}
-                    </Button>
+                    <div className="mt-6 space-y-2">
+                      <Button
+                        onClick={openCheckout}
+                        className="w-full bg-gradient-ocean text-primary-foreground"
+                      >
+                        S'abonner — 5,99 €/mois
+                      </Button>
+                      {!trialActive && (
+                        <Button
+                          onClick={handleStartTrial}
+                          disabled={busy}
+                          variant="outline"
+                          className="w-full"
+                        >
+                          {busy ? "…" : "Ou essayer 7 jours gratuit"}
+                        </Button>
+                      )}
+                      {trialActive && (
+                        <p className="text-[11px] text-center text-muted-foreground">Essai en cours — abonne-toi pour continuer après.</p>
+                      )}
+                    </div>
                   )
                 ) : isBusiness ? (
                   <Button asChild className="mt-6 w-full gap-2" variant="outline">
@@ -385,10 +411,24 @@ function PricingPage() {
             <strong> 24h avant</strong> une coupure programmée → <strong>Pro à 5,99 €/mois</strong> (essai 7 jours sans CB).
           </p>
           <p className="mt-2 text-[11px] text-muted-foreground">
-            Paiement Stripe activé prochainement pour le plan Pro. Aucun prélèvement, facture mensuelle ou annulation payante pour l'instant.
+            Paiement sécurisé par Stripe. Annulation à tout moment depuis ton espace.
           </p>
         </div>
       </section>
+
+      <Dialog open={checkoutOpen} onOpenChange={setCheckoutOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Paiement Aquagwada Pro</DialogTitle>
+          </DialogHeader>
+          {checkoutOpen && (
+            <StripeEmbeddedCheckoutForm
+              priceId="pro_monthly"
+              returnUrl={`${typeof window !== "undefined" ? window.location.origin : ""}/checkout/return?session_id={CHECKOUT_SESSION_ID}`}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </AppShell>
   );
 }
