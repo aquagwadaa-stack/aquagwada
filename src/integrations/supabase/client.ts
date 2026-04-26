@@ -5,12 +5,17 @@ import type { Database } from './types';
 const FALLBACK_SUPABASE_URL = 'https://jwzlvqrietkqpcpuutmz.supabase.co';
 const FALLBACK_SUPABASE_PUBLISHABLE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp3emx2cXJpZXRrcXBjcHV1dG16Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY5NDE2NzQsImV4cCI6MjA5MjUxNzY3NH0.2d3kXskREG3qsG813UhUmAKzEBkjHvvw96sqbQmXzKQ';
 
+function getProcessEnv(name: string) {
+  if (typeof process === 'undefined' || !process.env) return undefined;
+  return process.env[name];
+}
+
 function createSupabaseClient() {
-  // Use import.meta.env for client-side (Vite build-time replacement)
-  // Fall back to process.env for SSR and finally to public project values.
-  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || FALLBACK_SUPABASE_URL;
+  // Use import.meta.env for client-side (Vite build-time replacement).
+  // process.env exists during SSR, but not in the browser.
+  const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || getProcessEnv('SUPABASE_URL') || FALLBACK_SUPABASE_URL;
   const SUPABASE_PUBLISHABLE_KEY =
-    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.SUPABASE_PUBLISHABLE_KEY || FALLBACK_SUPABASE_PUBLISHABLE_KEY;
+    import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || getProcessEnv('SUPABASE_PUBLISHABLE_KEY') || FALLBACK_SUPABASE_PUBLISHABLE_KEY;
 
   if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     throw new Error(
