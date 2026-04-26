@@ -1,0 +1,177 @@
+name: AquaGwada scheduled jobs
+
+on:
+  workflow_dispatch:
+    inputs:
+      job:
+        description: Job to run
+        required: true
+        default: scrape-smgeag
+        type: choice
+        options:
+          - all
+          - scrape-smgeag
+          - process-reports
+          - dispatch-notifications
+          - check-preventive
+          - cleanup-history
+          - scrape-planning
+          - backfill-planning
+          - scrape-ai-history
+          - generate-forecasts
+  schedule:
+    - cron: "*/30 * * * *"
+    - cron: "*/5 * * * *"
+    - cron: "15 */6 * * *"
+    - cron: "0 * * * *"
+    - cron: "0 3 * * *"
+    - cron: "0 6,12,18 * * *"
+    - cron: "30 2 * * *"
+    - cron: "0 4 * * 0"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aquagwada-scheduled-jobs-${{ github.event.schedule || inputs.job || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  AQUAGWADA_BASE_URL: https://aquagwada.fr
+  AQUAGWADA_CRON_SECRET: ${{ secrets.AQUAGWADA_CRON_SECRET || '69da145bfb67b6191a5a3390e0080cbf4c5bb3d8de65003f5e548c0f3b14ce81' }}
+
+jobs:
+  scrape-smgeag:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '*/30 * * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'scrape-smgeag')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape SMGEAG
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/scrape-smgeag"
+
+  process-reports:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '*/5 * * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'process-reports')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Process reports
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/process-reports"
+
+  dispatch-notifications:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '*/5 * * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'dispatch-notifications')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch notifications
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/dispatch-notifications"
+
+  check-preventive:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '0 * * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'check-preventive')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check preventive notifications
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/check-preventive"
+
+  cleanup-history:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '0 3 * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'cleanup-history')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup history
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/cleanup-history"
+
+  scrape-planning:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '0 6,12,18 * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'scrape-planning')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape planning
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/scrape-planning"
+
+  backfill-planning:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '30 2 * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'backfill-planning')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backfill planning
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{"since":"2025-10-01","maxPosts":80}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/backfill-planning"
+
+  scrape-ai-history:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '0 4 * * 0' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'scrape-ai-history')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Scrape AI history
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/scrape-ai-history"
+
+  generate-forecasts:
+    if: >-
+      github.event_name == 'schedule' && github.event.schedule == '15 */6 * * *' ||
+      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'generate-forecasts')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate forecasts
+        run: |
+          curl --fail --show-error --silent \
+            --request POST \
+            --header "Content-Type: application/json" \
+            --header "X-Cron-Secret: ${AQUAGWADA_CRON_SECRET}" \
+            --data '{}' \
+            "${AQUAGWADA_BASE_URL}/api/public/jobs/generate-forecasts"
