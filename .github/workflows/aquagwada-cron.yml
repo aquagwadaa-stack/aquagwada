@@ -33,7 +33,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: aquagwada-scheduled-jobs-${{ github.event.schedule || inputs.job || github.run_id }}
+  group: aquagwada-scheduled-jobs-${{ github.event.schedule || github.event.inputs.job || github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -44,7 +44,7 @@ jobs:
   scrape-smgeag:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '*/30 * * * *' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'scrape-smgeag')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'scrape-smgeag')
     runs-on: ubuntu-latest
     steps:
       - name: Scrape SMGEAG
@@ -59,7 +59,7 @@ jobs:
   process-reports:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '*/5 * * * *' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'process-reports')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'process-reports')
     runs-on: ubuntu-latest
     steps:
       - name: Process reports
@@ -74,7 +74,7 @@ jobs:
   dispatch-notifications:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '*/5 * * * *' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'dispatch-notifications')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'dispatch-notifications')
     runs-on: ubuntu-latest
     steps:
       - name: Dispatch notifications
@@ -89,7 +89,7 @@ jobs:
   check-preventive:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '0 * * * *' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'check-preventive')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'check-preventive')
     runs-on: ubuntu-latest
     steps:
       - name: Check preventive notifications
@@ -104,7 +104,7 @@ jobs:
   cleanup-history:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '0 3 * * *' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'cleanup-history')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'cleanup-history')
     runs-on: ubuntu-latest
     steps:
       - name: Cleanup history
@@ -119,7 +119,7 @@ jobs:
   scrape-planning:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '0 6,12,18 * * *' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'scrape-planning')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'scrape-planning')
     runs-on: ubuntu-latest
     steps:
       - name: Scrape planning
@@ -134,7 +134,7 @@ jobs:
   backfill-planning:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '30 2 * * *' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'backfill-planning')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'backfill-planning')
     runs-on: ubuntu-latest
     steps:
       - name: Backfill planning
@@ -149,7 +149,7 @@ jobs:
   scrape-ai-history:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '0 4 * * 0' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'scrape-ai-history')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'scrape-ai-history')
     runs-on: ubuntu-latest
     steps:
       - name: Scrape AI history
@@ -164,7 +164,7 @@ jobs:
   generate-forecasts:
     if: >-
       github.event_name == 'schedule' && github.event.schedule == '15 */6 * * *' ||
-      github.event_name == 'workflow_dispatch' && (inputs.job == 'all' || inputs.job == 'generate-forecasts')
+      github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'generate-forecasts')
     runs-on: ubuntu-latest
     steps:
       - name: Generate forecasts
