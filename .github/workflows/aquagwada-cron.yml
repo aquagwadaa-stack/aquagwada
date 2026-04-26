@@ -1,6 +1,11 @@
 name: AquaGwada scheduled jobs
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/aquagwada-cron.yml"
   workflow_dispatch:
     inputs:
       job:
@@ -43,6 +48,7 @@ env:
 jobs:
   scrape-smgeag:
     if: >-
+      github.event_name == 'push' ||
       github.event_name == 'schedule' && github.event.schedule == '*/30 * * * *' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'scrape-smgeag')
     runs-on: ubuntu-latest
