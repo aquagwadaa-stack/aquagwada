@@ -12,19 +12,26 @@ export type OutageTimelineMode = "visitor" | "favorites" | "all";
 
 type CommuneLite = { id: string; name: string };
 
+function dateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 /**
- * Frise chronologique unifiée "Coupures au fil du temps".
+ * Frise chronologique unifiee "Coupures au fil du temps".
  * Remplace les anciens blocs Aujourd'hui / Demain / 7 derniers jours / 14 prochains jours.
  *
  * Principe :
- *  - Un ruban horizontal de jours (passé · aujourd'hui · futur) avec flèches.
- *  - Aujourd'hui sélectionné par défaut, en 4ème position visible (3 passés à gauche).
- *  - Selon le jour sélectionné, on charge :
- *      passé   → outage_history
- *      présent → outages live
- *      futur   → forecasts
- *  - Les jours hors fenêtre du plan sont grisés ("Pro") et redirigent vers /abonnements.
- *  - Mode `visitor` : aperçu seulement (aujourd'hui), sans historique ni prévisions cliquables.
+ *  - Un ruban horizontal de jours (passe · aujourd'hui · futur) avec fleches.
+ *  - Aujourd'hui selectionne par defaut, en 4eme position visible (3 passes a gauche).
+ *  - Selon le jour selectionne, on charge :
+ *      passe   -> outage_history
+ *      present -> outages live
+ *      futur   -> forecasts
+ *  - Les jours hors fenetre du plan sont grises ("Pro") et redirigent vers /abonnements.
+ *  - Mode `visitor` : apercu seulement (aujourd'hui), sans historique ni previsions cliquables.
  */
 export function OutageTimeline({
   tier,
@@ -36,9 +43,9 @@ export function OutageTimeline({
 }: {
   tier: Tier;
   mode: OutageTimelineMode;
-  /** Communes utilisées pour les requêtes ET l'affichage en lignes. */
+  /** Communes utilisees pour les requetes ET l'affichage en lignes. */
   communes: CommuneLite[];
-  /** Nb de cases visibles dans le ruban (par défaut 3). */
+  /** Nb de cases visibles dans le ruban (par defaut 3). */
   visibleCount?: number;
   emptyCommunesCtaLabel?: string;
   emptyCommunesCtaTo?: string;
@@ -46,13 +53,13 @@ export function OutageTimeline({
   // Bornes plan
   const caps = PLAN_CAPS[tier];
   const showForecasts = canSeeForecasts(tier);
-  // Visiteur (non connecté) : on ne propose que -1, aujourd'hui, +1 (cliquables = aujourd'hui),
-  // mais on garde 1 case future "aperçu" sans données réelles → CTA création de compte.
+  // Visiteur (non connecte) : on ne propose que -1, aujourd'hui, +1 (cliquables = aujourd'hui),
+  // mais on garde 1 case future "apercu" sans donnees reelles -> CTA creation de compte.
   const isVisitor = mode === "visitor";
-  const backDays = isVisitor ? 1 : 7; // 7 = même fenêtre que le plan free
-  const allowedBack = isVisitor ? 0 : caps.historyDays; // jours réellement accessibles
-  const forwardDays = isVisitor ? 1 : 14; // total affiché dans le ruban
-  const allowedForward = isVisitor ? 0 : caps.forecastDays; // jours réellement accessibles
+  const backDays = isVisitor ? 1 : 7; // 7 = meme fenetre que le plan free
+  const allowedBack = isVisitor ? 0 : caps.historyDays; // jours reellement accessibles
+  const forwardDays = isVisitor ? 1 : 14; // total affiche dans le ruban
+  const allowedForward = isVisitor ? 0 : caps.forecastDays; // jours reellement accessibles
 
   // Construction de la liste totale
   const today = useMemo(() => {
@@ -75,8 +82,9 @@ export function OutageTimeline({
 
     function computeVisibleCount() {
       const width = window.innerWidth;
-      if (width >= 1280) return Math.max(visibleCount, 6);
-      if (width >= 1024) return Math.max(visibleCount, 5);
+      if (width >= 1600) return Math.max(visibleCount, 8);
+      if (width >= 1280) return Math.max(visibleCount, 7);
+      if (width >= 1024) return Math.max(visibleCount, 6);
       if (width >= 640) return Math.max(visibleCount, 4);
       return visibleCount;
     }
@@ -89,8 +97,8 @@ export function OutageTimeline({
 
   const effectiveVisibleCount = Math.min(days.length, Math.max(1, responsiveVisibleCount));
   const [selectedIdx, setSelectedIdx] = useState(todayIndex);
-  // Position du curseur de défilement (index de la 1ère case visible).
-  // Aujourd'hui doit être en position visible 4 (index 3) → cursor = todayIndex - 3.
+  // Position du curseur de defilement (index de la 1ere case visible).
+  // Aujourd'hui doit etre en position visible 4 (index 3) -> cursor = todayIndex - 3.
   const preferredTodaySlot = Math.min(3, effectiveVisibleCount - 1);
   const idealCursor = Math.max(0, todayIndex - preferredTodaySlot);
   const [cursor, setCursor] = useState(idealCursor);
@@ -109,13 +117,13 @@ export function OutageTimeline({
 
   function handleClickDay(i: number) {
     if (!isAccessible(i)) {
-      // Redirection abonnements (lien dans le badge déjà géré).
+      // Redirection abonnements (lien dans le badge deja gere).
       return;
     }
     setSelectedIdx(i);
   }
 
-  // S'assurer que la case sélectionnée reste visible.
+  // S'assurer que la case selectionnee reste visible.
   useEffect(() => {
     if (selectedIdx < clampedCursor) setCursor(selectedIdx);
     else if (selectedIdx > clampedCursor + effectiveVisibleCount - 1) {
@@ -130,7 +138,7 @@ export function OutageTimeline({
   const dayEnd = useMemo(() => {
     const d = new Date(selected); d.setHours(23, 59, 59, 999); return d;
   }, [selected]);
-  const dayKey = dayStart.toISOString();
+  const dayKey = dateKey(dayStart);
 
   const isPast = dayStart.getTime() < today.getTime();
   const isFuture = dayStart.getTime() > today.getTime();
@@ -138,7 +146,7 @@ export function OutageTimeline({
 
   const communeIds = useMemo(() => communes.map((c) => c.id), [communes]);
 
-  // ===== Requêtes par jour =====
+  // ===== Requetes par jour =====
   const dayOutages = useQuery({
     queryKey: ["otl-outages", dayKey, communeIds.join(",")],
     queryFn: () => fetchOutagesWindow(dayStart.toISOString(), dayEnd.toISOString(), communeIds.length > 0 ? communeIds : undefined),
@@ -156,8 +164,8 @@ export function OutageTimeline({
   const dayForecasts = useQuery({
     queryKey: ["otl-forecasts", dayKey, communeIds.join(",")],
     queryFn: () => fetchForecastsRange(
-      dayStart.toISOString().slice(0, 10),
-      dayStart.toISOString().slice(0, 10),
+      dayKey,
+      dayKey,
       communeIds.length > 0 ? communeIds : undefined,
     ),
     enabled: showForecasts && isFuture && communes.length > 0,
@@ -195,7 +203,7 @@ export function OutageTimeline({
     (isFuture && showForecasts && dayForecasts.isLoading);
 
   const noCommunes = communes.length === 0;
-  const dayGapPx = 6;
+  const dayGapPx = 8;
 
   return (
     <section className="rounded-2xl border border-border bg-card shadow-soft overflow-hidden">
@@ -207,8 +215,8 @@ export function OutageTimeline({
           </h2>
           <p className="text-xs text-muted-foreground mt-0.5">
             {isVisitor
-              ? "Aperçu d'aujourd'hui — créez un compte pour explorer le passé et les prévisions."
-              : "Cliquez un jour pour voir les coupures et prévisions par commune."}
+              ? "Apercu d'aujourd'hui - creez un compte pour explorer le passe et les previsions."
+              : "Cliquez un jour pour voir les coupures et previsions par commune."}
           </p>
         </div>
         {tier === "free" && !isVisitor && (
@@ -216,7 +224,7 @@ export function OutageTimeline({
             to="/abonnements"
             className="text-[11px] inline-flex items-center gap-1 rounded-full border border-primary/30 bg-primary/5 px-2 py-0.5 text-primary hover:bg-primary/10"
           >
-            <Lock className="h-3 w-3" /> Pro = passé 1 an + prévisions 14j
+            <Lock className="h-3 w-3" /> Pro = passe 1 an + previsions 14j
           </Link>
         )}
       </header>
@@ -225,7 +233,7 @@ export function OutageTimeline({
       <div className="px-5 sm:px-6 pb-3 flex items-center gap-2">
         <button
           type="button"
-          aria-label="Jours précédents"
+          aria-label="Jours precedents"
           onClick={() => setCursor((c) => Math.max(0, c - 1))}
           disabled={clampedCursor === 0}
           className="shrink-0 grid h-9 w-9 place-items-center rounded-md border border-border bg-background text-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed"
@@ -235,7 +243,7 @@ export function OutageTimeline({
 
         <div className="flex-1 overflow-hidden">
           <div
-            className="flex gap-1.5 transition-transform duration-200 ease-out"
+            className="flex gap-2 transition-transform duration-200 ease-out"
             style={{
               transform: `translateX(calc(${-clampedCursor} * (((100% - ${(effectiveVisibleCount - 1) * dayGapPx}px) / ${effectiveVisibleCount}) + ${dayGapPx}px)))`,
             }}
@@ -258,7 +266,7 @@ export function OutageTimeline({
                   <span className="text-[10px] uppercase tracking-wider opacity-75">
                     {isTodayCell ? "Auj." : d.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "")}
                   </span>
-                  <span className="text-base font-semibold">{d.getDate()}</span>
+                  <span className="text-sm font-semibold leading-tight">{d.getDate()}</span>
                   {lockedReason && (
                     <span className="mt-0.5 inline-flex items-center gap-0.5 text-[9px] font-medium uppercase">
                       <Lock className="h-2.5 w-2.5" /> {lockedReason}
@@ -268,7 +276,7 @@ export function OutageTimeline({
               );
 
               const baseClass =
-                "shrink-0 flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-xs transition-colors min-w-0";
+                "shrink-0 h-14 flex flex-col items-center justify-center rounded-lg border px-2 py-1.5 text-xs transition-colors min-w-0";
               const styleStr: CSSProperties = {
                 flex: `0 0 calc((100% - ${(effectiveVisibleCount - 1) * dayGapPx}px) / ${effectiveVisibleCount})`,
               };
@@ -289,7 +297,7 @@ export function OutageTimeline({
                     to="/abonnements"
                     className={`${baseClass} ${stateClass}`}
                     style={styleStr}
-                    aria-label={`Jour verrouillé — passez à Pro`}
+                    aria-label="Jour verrouille - passez a Pro"
                   >
                     {cellInner}
                   </Link>
@@ -323,7 +331,7 @@ export function OutageTimeline({
         </button>
       </div>
 
-      {/* === Vue du jour sélectionné === */}
+      {/* === Vue du jour selectionne === */}
       <div className="px-5 sm:px-6 pb-5">
         {noCommunes ? (
           <EmptyCommunesBlock ctaLabel={emptyCommunesCtaLabel} ctaTo={emptyCommunesCtaTo} />
@@ -339,10 +347,10 @@ export function OutageTimeline({
             showForecasts={isFuture && showForecasts}
             communes={communes}
             lockedAfterNow={isVisitor && isToday}
-            lockedCtaText={isVisitor ? "Créer un compte gratuit" : "Essai gratuit Pro 7j · sans CB"}
+            lockedCtaText={isVisitor ? "Creer un compte gratuit" : "Essai gratuit Pro 7j · sans CB"}
             lockedCtaTo={isVisitor ? "/connexion" : "/abonnements"}
             teaserHours={1}
-            emptyTitle="Aucune commune à afficher"
+            emptyTitle="Aucune commune a afficher"
             emptyDescription="Ajoutez une commune favorite."
             emptyShowCta={false}
           />
@@ -352,14 +360,14 @@ export function OutageTimeline({
           <div className="mt-4 rounded-xl border border-primary/30 bg-gradient-to-br from-primary/5 to-accent/5 p-4 flex flex-wrap items-center gap-3">
             <Sparkles className="h-4 w-4 text-primary shrink-0" />
             <p className="flex-1 text-sm">
-              <strong>Créez votre compte gratuit</strong> pour suivre votre commune,
+              <strong>Creez votre compte gratuit</strong> pour suivre votre commune,
               voir les <strong>7 derniers jours</strong> et activer les alertes.
             </p>
             <Link
               to="/connexion"
               className="inline-flex items-center rounded-md bg-gradient-ocean px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
             >
-              Créer un compte
+              Creer un compte
             </Link>
           </div>
         )}
@@ -372,7 +380,7 @@ function EmptyCommunesBlock({ ctaLabel, ctaTo }: { ctaLabel: string; ctaTo: stri
   return (
     <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-8 text-center">
       <MapPin className="h-6 w-6 mx-auto text-primary mb-2" />
-      <p className="text-sm font-medium">Aucune commune à suivre pour le moment</p>
+      <p className="text-sm font-medium">Aucune commune a suivre pour le moment</p>
       <p className="text-xs text-muted-foreground mt-1 mb-4">
         Ajoutez votre commune favorite pour voir sa frise chronologique.
       </p>
@@ -390,15 +398,15 @@ function ForecastsLockedBlock() {
   return (
     <div className="rounded-xl border-2 border-dashed border-primary/40 bg-gradient-to-br from-primary/5 to-accent/5 p-8 text-center">
       <Lock className="h-6 w-6 mx-auto text-primary mb-2" />
-      <p className="text-sm font-semibold">Prévisions réservées au plan Pro</p>
+      <p className="text-sm font-semibold">Previsions reservees au plan Pro</p>
       <p className="text-xs text-muted-foreground mt-1 mb-4">
-        Anticipez vos coupures grâce à notre moteur statistique. Essai gratuit 7 jours.
+        Anticipez vos coupures grace a notre moteur statistique. Essai gratuit 7 jours.
       </p>
       <Link
         to="/abonnements"
         className="inline-flex items-center gap-1.5 rounded-md bg-gradient-ocean px-3 py-1.5 text-xs font-semibold text-primary-foreground hover:opacity-90"
       >
-        Démarrer mon essai gratuit
+        Demarrer mon essai gratuit
       </Link>
     </div>
   );
