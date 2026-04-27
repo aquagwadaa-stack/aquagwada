@@ -12,6 +12,13 @@ export type OutageTimelineMode = "visitor" | "favorites" | "all";
 
 type CommuneLite = { id: string; name: string };
 
+function dateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 /**
  * Frise chronologique unifiée "Coupures au fil du temps".
  * Remplace les anciens blocs Aujourd'hui / Demain / 7 derniers jours / 14 prochains jours.
@@ -20,9 +27,9 @@ type CommuneLite = { id: string; name: string };
  *  - Un ruban horizontal de jours (passé · aujourd'hui · futur) avec flèches.
  *  - Aujourd'hui sélectionné par défaut, en 4ème position visible (3 passés à gauche).
  *  - Selon le jour sélectionné, on charge :
- *      passé   → outage_history
- *      présent → outages live
- *      futur   → forecasts
+ *      passé   -> outage_history
+ *      présent -> outages live
+ *      futur   -> forecasts
  *  - Les jours hors fenêtre du plan sont grisés ("Pro") et redirigent vers /abonnements.
  *  - Mode `visitor` : aperçu seulement (aujourd'hui), sans historique ni prévisions cliquables.
  */
@@ -47,7 +54,7 @@ export function OutageTimeline({
   const caps = PLAN_CAPS[tier];
   const showForecasts = canSeeForecasts(tier);
   // Visiteur (non connecté) : on ne propose que -1, aujourd'hui, +1 (cliquables = aujourd'hui),
-  // mais on garde 1 case future "aperçu" sans données réelles → CTA création de compte.
+  // mais on garde 1 case future "aperçu" sans données réelles -> CTA création de compte.
   const isVisitor = mode === "visitor";
   const backDays = isVisitor ? 1 : 7; // 7 = même fenêtre que le plan free
   const allowedBack = isVisitor ? 0 : caps.historyDays; // jours réellement accessibles
@@ -75,8 +82,9 @@ export function OutageTimeline({
 
     function computeVisibleCount() {
       const width = window.innerWidth;
-      if (width >= 1280) return Math.max(visibleCount, 6);
-      if (width >= 1024) return Math.max(visibleCount, 5);
+      if (width >= 1600) return Math.max(visibleCount, 8);
+      if (width >= 1280) return Math.max(visibleCount, 7);
+      if (width >= 1024) return Math.max(visibleCount, 6);
       if (width >= 640) return Math.max(visibleCount, 4);
       return visibleCount;
     }
@@ -90,7 +98,7 @@ export function OutageTimeline({
   const effectiveVisibleCount = Math.min(days.length, Math.max(1, responsiveVisibleCount));
   const [selectedIdx, setSelectedIdx] = useState(todayIndex);
   // Position du curseur de défilement (index de la 1ère case visible).
-  // Aujourd'hui doit être en position visible 4 (index 3) → cursor = todayIndex - 3.
+  // Aujourd'hui doit être en position visible 4 (index 3) -> cursor = todayIndex - 3.
   const preferredTodaySlot = Math.min(3, effectiveVisibleCount - 1);
   const idealCursor = Math.max(0, todayIndex - preferredTodaySlot);
   const [cursor, setCursor] = useState(idealCursor);
@@ -109,7 +117,6 @@ export function OutageTimeline({
 
   function handleClickDay(i: number) {
     if (!isAccessible(i)) {
-      // Redirection abonnements (lien dans le badge déjà géré).
       return;
     }
     setSelectedIdx(i);
@@ -130,7 +137,7 @@ export function OutageTimeline({
   const dayEnd = useMemo(() => {
     const d = new Date(selected); d.setHours(23, 59, 59, 999); return d;
   }, [selected]);
-  const dayKey = dayStart.toISOString();
+  const dayKey = dateKey(dayStart);
 
   const isPast = dayStart.getTime() < today.getTime();
   const isFuture = dayStart.getTime() > today.getTime();
@@ -156,8 +163,8 @@ export function OutageTimeline({
   const dayForecasts = useQuery({
     queryKey: ["otl-forecasts", dayKey, communeIds.join(",")],
     queryFn: () => fetchForecastsRange(
-      dayStart.toISOString().slice(0, 10),
-      dayStart.toISOString().slice(0, 10),
+      dayKey,
+      dayKey,
       communeIds.length > 0 ? communeIds : undefined,
     ),
     enabled: showForecasts && isFuture && communes.length > 0,
@@ -180,7 +187,7 @@ export function OutageTimeline({
         reliability_score: h.reliability_score,
         cause: h.cause,
         description: null,
-        source_url: null,
+        source_url: h.source_url,
         commune: h.commune,
       }));
     }
@@ -195,7 +202,7 @@ export function OutageTimeline({
     (isFuture && showForecasts && dayForecasts.isLoading);
 
   const noCommunes = communes.length === 0;
-  const dayGapPx = 6;
+  const dayGapPx = 8;
 
   return (
     <section className="rounded-2xl border border-border bg-card shadow-soft overflow-hidden">
@@ -235,7 +242,7 @@ export function OutageTimeline({
 
         <div className="flex-1 overflow-hidden">
           <div
-            className="flex gap-1.5 transition-transform duration-200 ease-out"
+            className="flex gap-2 transition-transform duration-200 ease-out"
             style={{
               transform: `translateX(calc(${-clampedCursor} * (((100% - ${(effectiveVisibleCount - 1) * dayGapPx}px) / ${effectiveVisibleCount}) + ${dayGapPx}px)))`,
             }}
@@ -258,7 +265,7 @@ export function OutageTimeline({
                   <span className="text-[10px] uppercase tracking-wider opacity-75">
                     {isTodayCell ? "Auj." : d.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "")}
                   </span>
-                  <span className="text-base font-semibold">{d.getDate()}</span>
+                  <span className="text-sm font-semibold leading-tight">{d.getDate()}</span>
                   {lockedReason && (
                     <span className="mt-0.5 inline-flex items-center gap-0.5 text-[9px] font-medium uppercase">
                       <Lock className="h-2.5 w-2.5" /> {lockedReason}
@@ -268,7 +275,7 @@ export function OutageTimeline({
               );
 
               const baseClass =
-                "shrink-0 flex flex-col items-center justify-center rounded-lg border px-2 py-2 text-xs transition-colors min-w-0";
+                "shrink-0 h-14 flex flex-col items-center justify-center rounded-lg border px-2 py-1.5 text-xs transition-colors min-w-0";
               const styleStr: CSSProperties = {
                 flex: `0 0 calc((100% - ${(effectiveVisibleCount - 1) * dayGapPx}px) / ${effectiveVisibleCount})`,
               };
@@ -289,7 +296,7 @@ export function OutageTimeline({
                     to="/abonnements"
                     className={`${baseClass} ${stateClass}`}
                     style={styleStr}
-                    aria-label={`Jour verrouillé — passez à Pro`}
+                    aria-label="Jour verrouillé — passez à Pro"
                   >
                     {cellInner}
                   </Link>

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { fetchHistory, type HistoryEntry } from "@/lib/queries/history";
 import { PLAN_CAPS, type Tier } from "@/lib/subscription";
-import { History, Lock, Calendar, MapPin, Activity } from "lucide-react";
+import { History, Lock, Calendar, MapPin, Activity, ExternalLink } from "lucide-react";
 import { formatDuration } from "@/lib/format";
 
 /**
@@ -106,6 +106,7 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
           {rows.map((h) => {
             const start = new Date(h.starts_at);
             const end = new Date(h.ends_at);
+            const source = historySourceLabel(h);
             return (
               <li key={h.id} className="py-2.5 flex flex-wrap items-center gap-3 text-sm">
                 <span className="font-medium">
@@ -120,7 +121,22 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
                 {h.commune?.name && (
                   <span className="ml-auto text-xs font-medium text-foreground/80">{h.commune.name}</span>
                 )}
+                {h.sector && <span className="text-xs text-muted-foreground">· {h.sector}</span>}
                 {h.cause && <span className="text-xs text-muted-foreground italic">· {h.cause}</span>}
+                <span className="rounded-full border border-border bg-muted/30 px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                  {source}
+                </span>
+                {h.source_url && (
+                  <a
+                    href={h.source_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary underline underline-offset-2"
+                    title="Voir la source"
+                  >
+                    source <ExternalLink className="h-3 w-3" />
+                  </a>
+                )}
               </li>
             );
           })}
@@ -160,4 +176,13 @@ export function HistoryPanel({ tier, communeIds }: { tier: Tier; communeIds: str
       )}
     </section>
   );
+}
+
+function historySourceLabel(entry: HistoryEntry) {
+  const text = `${entry.cause ?? ""} ${entry.source_url ?? ""}`.toLowerCase();
+  if (text.includes("facebook")) return "Facebook";
+  if (entry.source === "official") return "Officiel";
+  if (entry.source === "user_report") return "Signalement";
+  if (entry.source === "scraping") return "Web";
+  return entry.source;
 }
