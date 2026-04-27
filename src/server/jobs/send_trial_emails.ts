@@ -12,11 +12,11 @@ async function getUserEmail(userId: string) {
 }
 
 async function alreadySent(userId: string, kind: "trial_ending" | "trial_ended") {
-  const { data, error } = await supabaseAdmin
-    .from("trial_email_reminders" as never)
+  const { data, error } = await (supabaseAdmin as any)
+    .from("trial_email_reminders")
     .select("id")
-    .eq("user_id" as never, userId)
-    .eq("kind" as never, kind)
+    .eq("user_id", userId)
+    .eq("kind", kind)
     .maybeSingle();
 
   if (error && !String(error.message).includes("does not exist")) {
@@ -26,9 +26,9 @@ async function alreadySent(userId: string, kind: "trial_ending" | "trial_ended")
 }
 
 async function markSent(userId: string, kind: "trial_ending" | "trial_ended") {
-  const { error } = await supabaseAdmin
-    .from("trial_email_reminders" as never)
-    .insert({ user_id: userId, kind } as never);
+  const { error } = await (supabaseAdmin as any)
+    .from("trial_email_reminders")
+    .insert({ user_id: userId, kind });
   if (error && !String(error.message).toLowerCase().includes("duplicate")) {
     console.warn("[send_trial_emails] reminder insert failed", error.message);
   }
