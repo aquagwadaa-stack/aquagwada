@@ -1,7 +1,8 @@
 import { supabase } from "@/integrations/supabase/client";
+import { DEFAULT_VAPID_PUBLIC_KEY } from "@/lib/vapid";
 
-/** Clé publique VAPID — exposée volontairement (équivalent d'un identifiant public). */
-const VAPID_PUBLIC_KEY = "BC1zhxw8eS_Cf-9oDHWMGJ7xEa3nm49RIdzmewtokRu1nmIiV5W7TgjTyTFmtV_HfGRr9vJrUzDq6cOidRhvgcM";
+/** Cle publique VAPID - exposee volontairement (equivalent d'un identifiant public). */
+const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
@@ -13,6 +14,26 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array<ArrayBuffer> {
   return out;
 }
 
+function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  for (let i = 0; i < a.byteLength; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function subscriptionUsesCurrentVapidKey(sub: PushSubscription): boolean {
+  const appServerKey = sub.options.applicationServerKey;
+  if (!appServerKey) return false;
+  return bytesEqual(new Uint8Array(appServerKey), urlBase64ToUint8Array(VAPID_PUBLIC_KEY));
+}
+
+async function removeStoredSubscription(endpoint: string) {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return;
+  await supabase.from("push_subscriptions").delete().eq("user_id", user.id).eq("endpoint", endpoint);
+}
+
 export function isPushSupported(): boolean {
   return typeof window !== "undefined"
     && "serviceWorker" in navigator
@@ -20,7 +41,7 @@ export function isPushSupported(): boolean {
     && "Notification" in window;
 }
 
-/** Détecte les contextes où il NE faut PAS enregistrer le SW (preview Lovable). */
+/** Detecte les contextes ou il NE faut PAS enregistrer le SW (preview Lovable). */
 export function isPreviewContext(): boolean {
   if (typeof window === "undefined") return true;
   const inIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
@@ -43,16 +64,32 @@ export async function getNotificationPermission(): Promise<NotificationPermissio
   return Notification.permission;
 }
 
+export async function getActivePushSubscription(): Promise<PushSubscription | null> {
+  if (!isPushSupported() || isPreviewContext()) return null;
+  const reg = await navigator.serviceWorker.ready;
+  const sub = await reg.pushManager.getSubscription();
+  if (!sub) return null;
+
+  if (!subscriptionUsesCurrentVapidKey(sub)) {
+    await removeStoredSubscription(sub.endpoint);
+    await sub.unsubscribe();
+    return null;
+  }
+
+  return sub;
+}
+
 /** Demande permission + souscrit + sauvegarde en BDD. */
 export async function subscribeToPush(): Promise<{ ok: boolean; reason?: string }> {
-  if (!isPushSupported()) return { ok: false, reason: "Notifications non supportées sur cet appareil" };
-  if (isPreviewContext()) return { ok: false, reason: "Ouvre AquaGwada sur le site publié pour activer les notifications" };
+  if (!isPushSupported()) return { ok: false, reason: "Notifications non supportees sur cet appareil" };
+  if (isPreviewContext()) return { ok: false, reason: "Ouvre AquaGwada sur le site publie pour activer les notifications" };
 
   const reg = await navigator.serviceWorker.ready;
   const perm = await Notification.requestPermission();
-  if (perm !== "granted") return { ok: false, reason: "Permission refusée" };
+  if (perm !== "granted") return { ok: false, reason: "Permission refusee" };
 
-  const sub = await reg.pushManager.subscribe({
+  const currentSub = await getActivePushSubscription();
+  const sub = currentSub ?? await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
   });
