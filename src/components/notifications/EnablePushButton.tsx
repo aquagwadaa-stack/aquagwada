@@ -3,6 +3,7 @@ import { Bell, BellOff, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import {
+  getActivePushSubscription,
   isPushSupported,
   isPreviewContext,
   subscribeToPush,
@@ -20,8 +21,7 @@ export function EnablePushButton() {
     setSupported(isPushSupported());
     setPreview(isPreviewContext());
     if (isPushSupported() && !isPreviewContext()) {
-      navigator.serviceWorker.getRegistration().then(async (reg) => {
-        const sub = await reg?.pushManager.getSubscription();
+      getActivePushSubscription().then(async (sub) => {
         const perm = await getNotificationPermission();
         setEnabled(!!sub && perm === "granted");
       });
@@ -29,12 +29,12 @@ export function EnablePushButton() {
   }, []);
 
   if (!supported) {
-    return <p className="text-sm text-muted-foreground">Notifications push non supportées sur cet appareil.</p>;
+    return <p className="text-sm text-muted-foreground">Notifications push non supportees sur cet appareil.</p>;
   }
   if (preview) {
     return (
       <p className="text-sm text-muted-foreground">
-        Pour activer les notifications, ouvre AquaGwada sur le site publié (pas dans l'éditeur Lovable).
+        Pour activer les notifications, ouvre AquaGwada sur le site publie (pas dans l'editeur Lovable).
       </p>
     );
   }
@@ -45,11 +45,11 @@ export function EnablePushButton() {
       if (enabled) {
         await unsubscribeFromPush();
         setEnabled(false);
-        toast.success("Notifications désactivées");
+        toast.success("Notifications desactivees");
       } else {
         const r = await subscribeToPush();
-        if (r.ok) { setEnabled(true); toast.success("Notifications activées 🔔"); }
-        else toast.error(r.reason ?? "Échec d'activation");
+        if (r.ok) { setEnabled(true); toast.success("Notifications activees"); }
+        else toast.error(r.reason ?? "Echec d'activation");
       }
     } finally { setBusy(false); }
   }
@@ -57,7 +57,7 @@ export function EnablePushButton() {
   return (
     <Button onClick={toggle} disabled={busy} variant={enabled ? "outline" : "default"} className="gap-2">
       {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : enabled ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-      {enabled ? "Désactiver les notifications push" : "Activer les notifications push"}
+      {enabled ? "Desactiver les notifications push" : "Activer les notifications push"}
     </Button>
   );
 }

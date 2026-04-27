@@ -46,6 +46,10 @@ function inQuietHours(start: string | null, end: string | null, now: Date): bool
   return cur >= s || cur < e;
 }
 
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 async function getUserEmail(userId: string) {
   const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
   return data.user?.email ?? null;
@@ -228,23 +232,25 @@ export async function dispatchNotifications(): Promise<{
             try {
               const result = await sendPushToUser(pref.user_id, payload);
               sent = result.sent > 0;
-              note = `push ${sent ? "envoye" : "non envoye"} via VAPID (${result.sent} appareil notifie, ${result.removed} abonnement expire retire)`;
+              const detail = result.lastError ? `, ${result.lastError}` : "";
+              note = `push ${sent ? "envoye" : "non envoye"} via VAPID (${result.sent} appareil notifie, ${result.removed} abonnement expire retire, ${result.failed} echec${result.failed > 1 ? "s" : ""}${detail})`;
             } catch (error) {
-              skipped += 1;
+              sent = false;
+              note = `push non envoye: ${errorMessage(error)}`;
               console.warn("[dispatch_notifications] push error", error);
-              continue;
             }
           }
 
           if (channel === "email") {
             const email = await getUserEmail(pref.user_id);
             if (!email) {
-              skipped += 1;
-              continue;
+              sent = false;
+              note = "email non envoye: aucun email utilisateur";
+            } else {
+              const result = await sendEmail({ to: email, ...outageEmail(payload.title, payload.body) });
+              sent = result.ok;
+              note = result.ok ? "email envoye via Resend" : `email non envoye: ${result.error}`;
             }
-            const result = await sendEmail({ to: email, ...outageEmail(payload.title, payload.body) });
-            sent = result.ok;
-            note = result.ok ? "email envoye via Resend" : `email non envoye: ${result.error}`;
           }
 
           const logRow = {
