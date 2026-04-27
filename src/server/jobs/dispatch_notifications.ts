@@ -1,19 +1,9 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendPushToUser, type PushPayload } from "@/server/notifications/send_push";
+import { outageEmail, sendEmail } from "@/server/email/resend";
 
-/**
- * Job de dispatch des notifications.
- *
- * - Lit `notification_preferences` pour respecter strictement les choix utilisateurs.
- * - Idempotent grâce à `notification_logs` (UNIQUE user_id, outage_id, kind, channel).
- * - Push envoyé réellement via VAPID.
- * - Email/SMS/WhatsApp restent désactivés tant qu'un provider dédié n'est pas branché.
- *
- * Événements gérés :
- *  - outage_start  : coupure qui vient de débuter (≤ 5 min)
- *  - water_back    : coupure qui vient de se terminer (≤ 5 min)
- *  - preventive    : coupure prévue dans X heures (X = pref.preventive_hours_before)
- */
+type NotificationKind = "outage_start" | "water_back" | "preventive" | "preventive_water_back";
+type NotificationChannel = "push" | "email";
 
 type Pref = {
   user_id: string;
@@ -48,7 +38,54 @@ function inQuietHours(start: string | null, end: string | null, now: Date): bool
   const e = eh * 60 + em;
   if (s === e) return false;
   if (s < e) return cur >= s && cur < e;
-  return cur >= s || cur < e; // plage qui passe minuit
+  return cur >= s || cur < e;
+}
+
+async function getUserEmail(userId: string) {
+  const { data } = await supabaseAdmin.auth.admin.getUserById(userId);
+  return data.user?.email ?? null;
+}
+
+function kindEnabled(pref: Pref, kind: NotificationKind) {
+  if (kind === "outage_start") return pref.notify_outage_start;
+  if (kind === "water_back") return pref.notify_water_back;
+  if (kind === "preventive") return pref.notify_preventive;
+  return pref.notify_preventive_water_back;
+}
+
+function insideUserTimingWindow(pref: Pref, outage: Outage, kind: NotificationKind, now: Date) {
+  if (kind === "preventive") {
+    const startMs = new Date(outage.starts_at).getTime();
+    const targetMs = now.getTime() + pref.preventive_hours_before * 3600_000;
+    return Math.abs(startMs - targetMs) <= 10 * 60_000;
+  }
+  if (kind === "preventive_water_back" && outage.ends_at) {
+    const endMs = new Date(outage.ends_at).getTime();
+    const targetMs = now.getTime() + pref.preventive_water_back_hours_before * 3600_000;
+    return Math.abs(endMs - targetMs) <= 10 * 60_000;
+  }
+  return true;
+}
+
+function buildPayload(kind: NotificationKind, outage: Outage, communeName: string): PushPayload {
+  const titles: Record<NotificationKind, string> = {
+    outage_start: `Coupure d'eau a ${communeName}`,
+    water_back: `Eau de retour a ${communeName}`,
+    preventive: `Coupure prevue a ${communeName}`,
+    preventive_water_back: `Eau bientot de retour a ${communeName}`,
+  };
+  const bodies: Record<NotificationKind, string> = {
+    outage_start: "Une coupure vient de debuter. Suivez l'evolution dans l'app.",
+    water_back: "L'eau a ete retablie. Pensez a purger les premiers litres.",
+    preventive: `Coupure planifiee le ${new Date(outage.starts_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}.`,
+    preventive_water_back: `Retour de l'eau prevu vers ${outage.ends_at ? new Date(outage.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "--"}.`,
+  };
+  return {
+    title: titles[kind],
+    body: bodies[kind],
+    url: "/ma-commune",
+    tag: `${kind}-${outage.id}`,
+  };
 }
 
 export async function dispatchNotifications(): Promise<{
@@ -56,12 +93,10 @@ export async function dispatchNotifications(): Promise<{
   candidates: number;
   logged: number;
   skipped: number;
-  note?: string;
 }> {
   const now = new Date();
   const fiveMinAgo = new Date(now.getTime() - 5 * 60_000).toISOString();
 
-  // 1. Outages "outage_start" : ongoing ayant démarré dans les 5 dernières min
   const { data: started } = await supabaseAdmin
     .from("outages")
     .select("id, commune_id, starts_at, ends_at, status")
@@ -70,7 +105,6 @@ export async function dispatchNotifications(): Promise<{
     .neq("status", "cancelled")
     .neq("status", "resolved");
 
-  // 2. water_back : resolved avec ends_at dans les 5 dernières min
   const { data: ended } = await supabaseAdmin
     .from("outages")
     .select("id, commune_id, starts_at, ends_at, status")
@@ -78,7 +112,6 @@ export async function dispatchNotifications(): Promise<{
     .lte("ends_at", now.toISOString())
     .eq("status", "resolved");
 
-  // 3. preventive : scheduled qui démarre entre +1h et +48h
   const futureMaxIso = new Date(now.getTime() + 48 * 3600_000).toISOString();
   const { data: scheduled } = await supabaseAdmin
     .from("outages")
@@ -87,7 +120,6 @@ export async function dispatchNotifications(): Promise<{
     .gte("starts_at", now.toISOString())
     .lte("starts_at", futureMaxIso);
 
-  // 4. preventive_water_back : ongoing dont ends_at est entre +1h et +6h
   const wbMaxIso = new Date(now.getTime() + 6 * 3600_000).toISOString();
   const { data: aboutToEnd } = await supabaseAdmin
     .from("outages")
@@ -100,98 +132,92 @@ export async function dispatchNotifications(): Promise<{
   let logged = 0;
   let skipped = 0;
 
-  async function processGroup(outages: Outage[], kind: "outage_start" | "water_back" | "preventive" | "preventive_water_back") {
-    for (const o of outages) {
-      // Trouver les utilisateurs abonnés à cette commune
+  async function processGroup(outages: Outage[], kind: NotificationKind) {
+    for (const outage of outages) {
       const { data: subs } = await supabaseAdmin
         .from("user_communes")
         .select("user_id")
-        .eq("commune_id", o.commune_id);
+        .eq("commune_id", outage.commune_id);
       if (!subs?.length) continue;
-      const userIds = Array.from(new Set(subs.map((s) => s.user_id)));
 
+      const userIds = Array.from(new Set(subs.map((sub) => sub.user_id)));
       const { data: prefsRows } = await supabaseAdmin
         .from("notification_preferences")
         .select("*")
         .in("user_id", userIds);
       const prefs = (prefsRows ?? []) as Pref[];
 
-      for (const p of prefs) {
+      const commune = await supabaseAdmin.from("communes").select("name").eq("id", outage.commune_id).maybeSingle();
+      const communeName = commune.data?.name ?? "votre commune";
+      const payload = buildPayload(kind, outage, communeName);
+
+      for (const pref of prefs) {
         candidates += 1;
 
-        // Filtrage par type d'événement
-        if (kind === "outage_start" && !p.notify_outage_start) { skipped += 1; continue; }
-        if (kind === "water_back" && !p.notify_water_back) { skipped += 1; continue; }
-        if (kind === "preventive" && !p.notify_preventive) { skipped += 1; continue; }
-        if (kind === "preventive_water_back" && !p.notify_preventive_water_back) { skipped += 1; continue; }
-
-        // Préventif : respecter le délai souhaité (fenêtre ±10 min autour de pref.preventive_hours_before)
-        if (kind === "preventive") {
-          const startMs = new Date(o.starts_at).getTime();
-          const targetMs = now.getTime() + p.preventive_hours_before * 3600_000;
-          if (Math.abs(startMs - targetMs) > 10 * 60_000) { skipped += 1; continue; }
+        if (!kindEnabled(pref, kind)) {
+          skipped += 1;
+          continue;
         }
-        if (kind === "preventive_water_back" && o.ends_at) {
-          const endMs = new Date(o.ends_at).getTime();
-          const targetMs = now.getTime() + p.preventive_water_back_hours_before * 3600_000;
-          if (Math.abs(endMs - targetMs) > 10 * 60_000) { skipped += 1; continue; }
+        if (!insideUserTimingWindow(pref, outage, kind, now)) {
+          skipped += 1;
+          continue;
+        }
+        if ((kind === "preventive" || kind === "preventive_water_back") && inQuietHours(pref.quiet_hours_start, pref.quiet_hours_end, now)) {
+          skipped += 1;
+          continue;
         }
 
-        // Heures silencieuses : respect côté DB si présent (UI les a retirées mais on conserve la logique)
-        if ((kind === "preventive" || kind === "preventive_water_back") && inQuietHours(p.quiet_hours_start, p.quiet_hours_end, now)) {
-          skipped += 1; continue;
+        const channels: NotificationChannel[] = [];
+        if (pref.push_enabled) channels.push("push");
+        if (pref.email_enabled) channels.push("email");
+        if (channels.length === 0) {
+          skipped += 1;
+          continue;
         }
 
-        const channels: Array<"push"> = [];
-        if (p.push_enabled) channels.push("push");
-        if (channels.length === 0) { skipped += 1; continue; }
+        for (const channel of channels) {
+          let sent = false;
+          let note = "";
 
-        for (const ch of channels) {
-          let pushResult: { sent: number; removed: number } | null = null;
-          const commune = await supabaseAdmin.from("communes").select("name").eq("id", o.commune_id).maybeSingle();
-          const communeName = commune.data?.name ?? "votre commune";
-          const titles: Record<typeof kind, string> = {
-            outage_start: `🚱 Coupure d'eau à ${communeName}`,
-            water_back: `💧 Eau de retour à ${communeName}`,
-            preventive: `⏰ Coupure prévue à ${communeName}`,
-            preventive_water_back: `🔜 Eau bientôt de retour à ${communeName}`,
-          };
-          const bodies: Record<typeof kind, string> = {
-            outage_start: `Une coupure vient de débuter. Suis l'évolution dans l'app.`,
-            water_back: `L'eau a été rétablie. Pense à purger les premiers litres.`,
-            preventive: `Coupure planifiée le ${new Date(o.starts_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}.`,
-            preventive_water_back: `Retour de l'eau prévu vers ${o.ends_at ? new Date(o.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "—"}.`,
-          };
-          const payload: PushPayload = {
-            title: titles[kind],
-            body: bodies[kind],
-            url: "/ma-commune",
-            tag: `${kind}-${o.id}`,
-          };
-          try {
-            pushResult = await sendPushToUser(p.user_id, payload);
-          } catch (e) {
-            skipped += 1;
-            console.warn("[push] dispatch err", e);
-            continue;
+          if (channel === "push") {
+            try {
+              const result = await sendPushToUser(pref.user_id, payload);
+              sent = result.sent > 0;
+              note = `push ${sent ? "envoye" : "non envoye"} via VAPID (${result.sent} appareil notifie, ${result.removed} abonnement expire retire)`;
+            } catch (error) {
+              skipped += 1;
+              console.warn("[dispatch_notifications] push error", error);
+              continue;
+            }
           }
-          const pushSent = (pushResult?.sent ?? 0) > 0;
+
+          if (channel === "email") {
+            const email = await getUserEmail(pref.user_id);
+            if (!email) {
+              skipped += 1;
+              continue;
+            }
+            const result = await sendEmail({ to: email, ...outageEmail(payload.title, payload.body) });
+            sent = result.ok;
+            note = result.ok ? "email envoye via Resend" : `email non envoye: ${result.error}`;
+          }
+
           const { error } = await supabaseAdmin.from("notification_logs").insert({
-            user_id: p.user_id,
-            outage_id: o.id,
-            channel: ch,
+            user_id: pref.user_id,
+            outage_id: outage.id,
+            channel,
             kind,
-            dry_run: !pushSent,
+            dry_run: !sent,
             payload: {
-              commune_id: o.commune_id,
-              starts_at: o.starts_at,
-              ends_at: o.ends_at,
-              note: `push ${pushSent ? "envoyé" : "non envoyé"} via VAPID (${pushResult?.sent ?? 0} appareil notifié, ${pushResult?.removed ?? 0} abonnement expiré retiré)`,
+              commune_id: outage.commune_id,
+              starts_at: outage.starts_at,
+              ends_at: outage.ends_at,
+              note,
             },
           });
-          // Conflit unique = déjà envoyé, on saute silencieusement
+
           if (!error) logged += 1;
-          else if (!String(error.message).includes("duplicate")) {
+          else if (!String(error.message).toLowerCase().includes("duplicate")) {
             console.error("[dispatch_notifications] insert error:", error.message);
           }
         }
