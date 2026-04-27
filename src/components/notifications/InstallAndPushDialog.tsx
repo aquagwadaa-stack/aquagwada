@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Smartphone, Bell, Share, Plus, CheckCircle2 } from "lucide-react";
-import { isPushSupported, isPreviewContext, subscribeToPush, getNotificationPermission } from "@/lib/push-notifications";
+import { getActivePushSubscription, isPushSupported, isPreviewContext, subscribeToPush, getNotificationPermission } from "@/lib/push-notifications";
 import { toast } from "sonner";
 
 type BeforeInstallPromptEvent = Event & {
@@ -23,11 +23,11 @@ function isIOS(): boolean {
 
 /**
  * Modale qui guide l'utilisateur :
- *  - Installer l'app (PWA) si pas déjà fait
+ *  - Installer l'app (PWA) si pas deja fait
  *  - Activer les notifications push
- *  - Continuer la sauvegarde de ses préférences
+ *  - Continuer la sauvegarde de ses preferences
  *
- * `onContinue` est appelé quand l'utilisateur veut sauvegarder (avec ou sans install).
+ * `onContinue` est appele quand l'utilisateur veut sauvegarder (avec ou sans install).
  */
 export function InstallAndPushDialog({
   open,
@@ -48,8 +48,7 @@ export function InstallAndPushDialog({
   useEffect(() => {
     setInstalled(isStandalone());
     if (isPushSupported() && !preview) {
-      navigator.serviceWorker.getRegistration().then(async (reg) => {
-        const sub = await reg?.pushManager.getSubscription();
+      getActivePushSubscription().then(async (sub) => {
         const perm = await getNotificationPermission();
         setPushOn(!!sub && perm === "granted");
       });
@@ -68,7 +67,7 @@ export function InstallAndPushDialog({
     const { outcome } = await installEvt.userChoice;
     if (outcome === "accepted") {
       setInstalled(true);
-      toast.success("App installée 🎉");
+      toast.success("App installee");
     }
   }
 
@@ -76,8 +75,8 @@ export function InstallAndPushDialog({
     setBusy(true);
     try {
       const r = await subscribeToPush();
-      if (r.ok) { setPushOn(true); toast.success("Notifications activées 🔔"); }
-      else toast.error(r.reason ?? "Échec d'activation");
+      if (r.ok) { setPushOn(true); toast.success("Notifications activees"); }
+      else toast.error(r.reason ?? "Echec d'activation");
     } finally { setBusy(false); }
   }
 
@@ -92,15 +91,14 @@ export function InstallAndPushDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Smartphone className="h-5 w-5 text-primary" />
-            Pour recevoir tes alertes en temps réel
+            Pour recevoir tes alertes en temps reel
           </DialogTitle>
           <DialogDescription>
-            On a besoin de 2 toutes petites étapes pour que les notifications fonctionnent <strong>même quand l'app est fermée</strong>.
+            On a besoin de 2 toutes petites etapes pour que les notifications fonctionnent <strong>meme quand l'app est fermee</strong>.
           </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 mt-2">
-          {/* Étape 1 : installer */}
           <div className={`rounded-xl border p-4 ${installed ? "border-success/40 bg-success/5" : "border-border bg-muted/30"}`}>
             <div className="flex items-start gap-3">
               <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${installed ? "bg-success/20 text-success" : "bg-primary/15 text-primary"}`}>
@@ -108,12 +106,12 @@ export function InstallAndPushDialog({
               </div>
               <div className="flex-1">
                 <p className="font-semibold text-sm">
-                  {installed ? "App installée ✓" : "Installer AquaGwada sur ton téléphone"}
+                  {installed ? "App installee" : "Installer AquaGwada sur ton telephone"}
                 </p>
                 {!installed && (
                   <>
                     <p className="text-xs text-muted-foreground mt-1">
-                      C'est gratuit, ça prend 5 secondes, <strong>pas besoin de l'App Store ni de Google Play</strong>. L'app s'ajoute juste sur ton écran d'accueil.
+                      C'est gratuit, ca prend 5 secondes, <strong>pas besoin de l'App Store ni de Google Play</strong>. L'app s'ajoute juste sur ton ecran d'accueil.
                     </p>
                     {ios ? (
                       <div className="mt-3 rounded-lg bg-card border border-border p-3 text-xs space-y-1.5">
@@ -122,7 +120,7 @@ export function InstallAndPushDialog({
                           <Share className="h-3.5 w-3.5 text-primary" /> Touche le bouton <strong>Partager</strong> en bas
                         </p>
                         <p className="flex items-center gap-1.5 text-muted-foreground">
-                          <Plus className="h-3.5 w-3.5 text-primary" /> Choisis <strong>« Sur l'écran d'accueil »</strong>
+                          <Plus className="h-3.5 w-3.5 text-primary" /> Choisis <strong>Sur l'ecran d'accueil</strong>
                         </p>
                       </div>
                     ) : installEvt ? (
@@ -131,7 +129,7 @@ export function InstallAndPushDialog({
                       </Button>
                     ) : (
                       <p className="mt-2 text-[11px] text-muted-foreground italic">
-                        Sur Android Chrome : ouvre le menu ⋮ → « Installer l'application ». Sur ordinateur : icône d'install dans la barre d'adresse.
+                        Sur Android Chrome : ouvre le menu puis Installer l'application. Sur ordinateur : icone d'install dans la barre d'adresse.
                       </p>
                     )}
                   </>
@@ -140,7 +138,6 @@ export function InstallAndPushDialog({
             </div>
           </div>
 
-          {/* Étape 2 : activer push */}
           <div className={`rounded-xl border p-4 ${pushOn ? "border-success/40 bg-success/5" : "border-border bg-muted/30"}`}>
             <div className="flex items-start gap-3">
               <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${pushOn ? "bg-success/20 text-success" : "bg-primary/15 text-primary"}`}>
@@ -148,19 +145,19 @@ export function InstallAndPushDialog({
               </div>
               <div className="flex-1">
                 <p className="font-semibold text-sm">
-                  {pushOn ? "Notifications activées ✓" : "Autoriser les notifications"}
+                  {pushOn ? "Notifications activees" : "Autoriser les notifications"}
                 </p>
                 {!pushOn && (
                   <>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Ton téléphone va te demander l'autorisation d'envoyer des notifications. Touche <strong>« Autoriser »</strong>.
+                      Ton telephone va te demander l'autorisation d'envoyer des notifications. Touche <strong>Autoriser</strong>.
                     </p>
                     <Button size="sm" onClick={handleEnablePush} disabled={busy || preview} className="mt-3 gap-2">
-                      <Bell className="h-4 w-4" /> {busy ? "…" : "Activer les notifications"}
+                      <Bell className="h-4 w-4" /> {busy ? "..." : "Activer les notifications"}
                     </Button>
                     {preview && (
                       <p className="mt-2 text-[11px] text-muted-foreground italic">
-                        ⚠️ Disponible uniquement sur le site publié (aquagwada.fr), pas dans cet aperçu.
+                        Disponible uniquement sur le site publie (aquagwada.fr), pas dans cet apercu.
                       </p>
                     )}
                   </>
@@ -172,10 +169,10 @@ export function InstallAndPushDialog({
 
         <div className="flex flex-col-reverse sm:flex-row sm:justify-between gap-2 mt-4 pt-4 border-t border-border">
           <Button variant="ghost" size="sm" onClick={handleSaveAnyway}>
-            Plus tard, sauvegarder quand même
+            Plus tard, sauvegarder quand meme
           </Button>
           <Button onClick={handleSaveAnyway} className="gap-2">
-            <CheckCircle2 className="h-4 w-4" /> Sauvegarder mes préférences
+            <CheckCircle2 className="h-4 w-4" /> Sauvegarder mes preferences
           </Button>
         </div>
       </DialogContent>
