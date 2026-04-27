@@ -1,10 +1,14 @@
+import { useState } from "react";
 import type { Outage } from "@/lib/queries/outages";
 import type { Forecast } from "@/lib/queries/forecasts";
 import { StatusBadge } from "./StatusBadge";
 import { SourceBadge } from "./SourceBadge";
 import { formatHM, formatDuration, durationBetween } from "@/lib/format";
-import { Clock, Sparkles, TrendingDown, TrendingUp, Minus, Lock, MapPin, Plus } from "lucide-react";
+import { Clock, Sparkles, TrendingDown, TrendingUp, Minus, Lock, MapPin, Plus, ExternalLink } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+
+const DAY_MS = 24 * 60 * 60_000;
 
 function TrendBadge({ trend }: { trend: Forecast["trend"] }) {
   if (trend === "improving") {
@@ -26,6 +30,33 @@ function TrendBadge({ trend }: { trend: Forecast["trend"] }) {
       <Minus className="h-3 w-3" /> stable
     </span>
   );
+}
+
+function dateKeyLocal(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addDaysKey(dateKey: string, days: number): string {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function parseTimeMinutes(value: string | null | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const [hRaw = "0", mRaw = "0"] = value.split(":");
+  const hours = Number(hRaw);
+  const minutes = Number(mRaw);
+  if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return fallback;
+  return Math.max(0, Math.min(23, hours)) * 60 + Math.max(0, Math.min(59, minutes));
+}
+
+function timeLabel(value: string | null | undefined) {
+  return value?.slice(0, 5) ?? "--:--";
 }
 
 function outageEndForTimeline(o: Outage, endOfDay: Date): Date {
@@ -51,13 +82,43 @@ function segmentPosition(startMs: number, endMs: number, startOfDay: Date, endOf
   return { left: Math.max(0, left), width: Math.min(100 - Math.max(0, left), width) };
 }
 
+function forecastBoundsForDate(f: Forecast, date: Date) {
+  const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
+  const dayKey = dateKeyLocal(startOfDay);
+  const startMinutes = parseTimeMinutes(f.window_start, 8 * 60);
+  const endMinutes = parseTimeMinutes(f.window_end, 10 * 60);
+  const overnight = endMinutes <= startMinutes;
+  const sameDay = f.forecast_date === dayKey;
+  const continuation = overnight && addDaysKey(f.forecast_date, 1) === dayKey;
+
+  if (!sameDay && !continuation) return null;
+
+  const startMs = continuation
+    ? startOfDay.getTime()
+    : startOfDay.getTime() + startMinutes * 60_000;
+  let endMs = startOfDay.getTime() + endMinutes * 60_000;
+  if (sameDay && endMs <= startMs) endMs += DAY_MS;
+
+  return { startMs, endMs, continuation };
+}
+
 function forecastWindowForTimeline(f: Forecast, startOfDay: Date, endOfDay: Date) {
-  const [sh = 8, sm = 0] = (f.window_start ?? "08:00:00").split(":").map(Number);
-  const [eh = 10, em = 0] = (f.window_end ?? "10:00:00").split(":").map(Number);
-  const startMs = startOfDay.getTime() + (sh * 60 + sm) * 60_000;
-  let endMs = startOfDay.getTime() + (eh * 60 + em) * 60_000;
-  if (endMs <= startMs) endMs += 24 * 60 * 60_000;
-  return segmentPosition(startMs, endMs, startOfDay, endOfDay);
+  const bounds = forecastBoundsForDate(f, startOfDay);
+  if (!bounds) return null;
+  return segmentPosition(bounds.startMs, bounds.endMs, startOfDay, endOfDay);
+}
+
+function forecastTouchesDate(f: Forecast, date: Date) {
+  const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
+  const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
+  const bounds = forecastBoundsForDate(f, startOfDay);
+  return !!bounds && !!segmentPosition(bounds.startMs, bounds.endMs, startOfDay, endOfDay);
+}
+
+function forecastWindowLabel(f: Forecast, date: Date) {
+  const bounds = forecastBoundsForDate(f, date);
+  if (bounds?.continuation) return `00:00–${timeLabel(f.window_end)} (suite de la veille)`;
+  return `${timeLabel(f.window_start)}–${timeLabel(f.window_end)}`;
 }
 
 /**
@@ -78,6 +139,13 @@ type GroupedOutage = {
   primary: Outage;
 };
 
+type TimelineDetail = {
+  title: string;
+  description?: string | null;
+  rows: Array<{ label: string; value: string | null | undefined }>;
+  sourceUrl?: string | null;
+};
+
 function groupOutagesByWindow(items: Outage[]): GroupedOutage[] {
   const map = new Map<string, GroupedOutage>();
   for (const o of items) {
@@ -89,7 +157,7 @@ function groupOutagesByWindow(items: Outage[]): GroupedOutage[] {
     if (existing) {
       if (sector && !existing.sectors.includes(sector)) existing.sectors.push(sector);
       existing.count++;
-      // garde la coupure la plus fiable comme primaire
+      // Garde la coupure la plus fiable comme primaire.
       if ((o.reliability_score ?? 0) > (existing.reliability_score ?? 0)) {
         existing.primary = o;
         existing.reliability_score = o.reliability_score;
@@ -111,6 +179,95 @@ function groupOutagesByWindow(items: Outage[]): GroupedOutage[] {
     }
   }
   return [...map.values()];
+}
+
+function sourceLabel(source: Outage["source"], outage?: Outage) {
+  const text = `${outage?.cause ?? ""} ${outage?.description ?? ""} ${outage?.source_url ?? ""}`.toLowerCase();
+  if (text.includes("facebook")) return "Signal Facebook / communautaire";
+  if (source === "official") return "Officiel SMGEAG";
+  if (source === "user_report") return "Signalement communautaire";
+  if (source === "scraping") return "Web / presse";
+  return "Prévision";
+}
+
+function statusLabel(status: Outage["status"]) {
+  if (status === "ongoing") return "En cours";
+  if (status === "scheduled") return "Programmée";
+  if (status === "resolved") return "Terminée";
+  return "Annulée";
+}
+
+function outageDetail(g: GroupedOutage, end: Date, date: Date): TimelineDetail {
+  const sectorLabel = g.sectors.length > 0 ? g.sectors.join(", ") : g.primary.sector;
+  const duration = durationBetween(g.starts_at, end.toISOString()) ?? g.estimated_duration_minutes;
+  return {
+    title: g.primary.commune?.name ?? "Coupure d'eau",
+    description: g.primary.description,
+    sourceUrl: g.primary.source_url,
+    rows: [
+      { label: "Date", value: date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) },
+      { label: "Créneau", value: `${formatHM(g.starts_at)}–${outageEndLabel(g.primary, end)}` },
+      { label: "Durée", value: duration ? formatDuration(duration) : null },
+      { label: "Statut", value: statusLabel(g.status) },
+      { label: "Secteur / quartier", value: sectorLabel || "Non précisé" },
+      { label: "Source", value: sourceLabel(g.source, g.primary) },
+      { label: "Fiabilité", value: `${Math.round((g.reliability_score ?? 0) * 100)}%` },
+      { label: "Cause", value: g.primary.cause },
+    ],
+  };
+}
+
+function forecastDetail(f: Forecast, date: Date): TimelineDetail {
+  return {
+    title: f.commune?.name ?? "Prévision de coupure",
+    description: f.basis,
+    rows: [
+      { label: "Date", value: date.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) },
+      { label: "Créneau", value: forecastWindowLabel(f, date) },
+      { label: "Probabilité", value: `${Math.round(f.probability * 100)}%` },
+      { label: "Confiance", value: `${Math.round(f.confidence * 100)}%` },
+      { label: "Type", value: f.kind === "official_schedule" ? "Planning officiel" : "Prévision statistique" },
+      { label: "Tendance", value: f.trend === "improving" ? "En amélioration" : f.trend === "worsening" ? "En aggravation" : "Stable" },
+    ],
+  };
+}
+
+function TimelineDetailDialog({ detail, onOpenChange }: { detail: TimelineDetail | null; onOpenChange: (open: boolean) => void }) {
+  return (
+    <Dialog open={!!detail} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        {detail && (
+          <>
+            <DialogHeader>
+              <DialogTitle>{detail.title}</DialogTitle>
+              <DialogDescription>Détail du créneau sélectionné</DialogDescription>
+            </DialogHeader>
+            <dl className="grid grid-cols-1 gap-2 text-sm">
+              {detail.rows.filter((row) => !!row.value).map((row) => (
+                <div key={row.label} className="grid grid-cols-[120px_1fr] gap-3 rounded-md border border-border/70 px-3 py-2">
+                  <dt className="text-xs text-muted-foreground">{row.label}</dt>
+                  <dd className="font-medium text-foreground/90">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+            {detail.description && (
+              <p className="rounded-md bg-muted/30 px-3 py-2 text-sm text-muted-foreground">{detail.description}</p>
+            )}
+            {detail.sourceUrl && (
+              <a
+                href={detail.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 text-sm font-medium text-primary underline underline-offset-2"
+              >
+                Voir la source <ExternalLink className="h-3.5 w-3.5" />
+              </a>
+            )}
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 /**
@@ -183,6 +340,7 @@ export function DayTimeline({
   emptyDescription?: string;
   emptyShowCta?: boolean;
 }) {
+  const [detail, setDetail] = useState<TimelineDetail | null>(null);
   const startOfDay = new Date(date); startOfDay.setHours(0, 0, 0, 0);
   const endOfDay = new Date(date); endOfDay.setHours(23, 59, 59, 999);
   const dayMs = endOfDay.getTime() - startOfDay.getTime();
@@ -193,7 +351,7 @@ export function DayTimeline({
   const nowOffset = isToday ? ((Date.now() - startOfDay.getTime()) / dayMs) * 100 : null;
 
   const dailyForecasts = showForecasts
-    ? forecasts.filter((f) => f.forecast_date === date.toISOString().slice(0, 10))
+    ? forecasts.filter((f) => forecastTouchesDate(f, date))
     : [];
 
   // Calcule le point de coupure visuelle pour le mode verrouillé
@@ -304,10 +462,13 @@ export function DayTimeline({
                       ? `Secteur${g.sectors.length > 1 ? "s" : ""} ${g.sectors.join(", ")}`
                       : `${g.sectors.length} secteurs concernés`;
                   return (
-                    <div
+                    <button
                       key={key}
-                      className={`absolute rounded-md border ${tone} p-1.5 overflow-hidden`}
+                      type="button"
+                      onClick={() => setDetail(outageDetail(g, end, date))}
+                      className={`absolute rounded-md border ${tone} p-1.5 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-primary/40`}
                       style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
+                      title={`${formatHM(g.starts_at)}–${outageEndLabel(g.primary, end)} · ${sectorLabel}`}
                     >
                       <div className="flex items-center gap-2 text-[11px] font-medium truncate">
                         <Clock className="h-3 w-3 shrink-0" />
@@ -315,7 +476,7 @@ export function DayTimeline({
                         {g.primary.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {g.primary.commune.name}</span>}
                       </div>
                       <div className="text-[10px] text-muted-foreground truncate">{sectorLabel}</div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -325,11 +486,10 @@ export function DayTimeline({
           {/* Forecasts (jaune, dashed) — mode classique */}
           {!multiMode && dailyForecasts.length > 0 && (() => {
             const items = dailyForecasts.map((f) => {
+              const bounds = forecastBoundsForDate(f, date);
               const seg = forecastWindowForTimeline(f, startOfDay, endOfDay);
-              if (!seg) return null;
-              const startMs = startOfDay.getTime() + (seg.left / 100) * dayMs;
-              const endMs = startMs + (seg.width / 100) * dayMs;
-              return { key: `f-${f.id}`, startMs, endMs, f, seg };
+              if (!seg || !bounds) return null;
+              return { key: `f-${f.id}`, startMs: bounds.startMs, endMs: bounds.endMs, f, seg };
             }).filter((x): x is NonNullable<typeof x> => x !== null);
             const { laneOf, laneCount } = computeLanes(items);
             const laneHeight = 48;
@@ -341,21 +501,23 @@ export function DayTimeline({
                   const top = lane * (laneHeight + 6);
                   const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
                   return (
-                    <div
+                    <button
                       key={key}
-                      className={`absolute rounded-md border-2 border-dashed ${intensity} p-1.5 overflow-hidden`}
+                      type="button"
+                      onClick={() => setDetail(forecastDetail(f, date))}
+                      className={`absolute rounded-md border-2 border-dashed ${intensity} p-1.5 overflow-hidden text-left focus:outline-none focus:ring-2 focus:ring-primary/40`}
                       style={{ left: `${seg.left}%`, width: `${seg.width}%`, top, height: laneHeight }}
                       title={f.basis ?? "Prévision"}
                     >
                       <div className="flex items-center gap-2 text-[11px] font-medium truncate">
                         <Sparkles className="h-3 w-3 shrink-0" />
-                        <span>{f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)} · {Math.round(f.probability * 100)}%</span>
+                        <span>{forecastWindowLabel(f, date)} · {Math.round(f.probability * 100)}%</span>
                         {f.commune?.name && <span className="text-muted-foreground hidden sm:inline">· {f.commune.name}</span>}
                       </div>
                       <div className="text-[10px] text-muted-foreground truncate">
                         Prévision (confiance {Math.round(f.confidence * 100)}%)
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -377,15 +539,13 @@ export function DayTimeline({
               layoutItems.push({ key: `o-${g.key}`, startMs: s, endMs: end.getTime(), type: "outage", ref: g });
             }
             for (const f of cForecasts) {
-              const seg = forecastWindowForTimeline(f, startOfDay, endOfDay);
-              if (!seg) continue;
-              const startMs = startOfDay.getTime() + (seg.left / 100) * dayMs;
-              const endMs = startMs + (seg.width / 100) * dayMs;
-              layoutItems.push({ key: `f-${f.id}`, startMs, endMs, type: "forecast", ref: f });
+              const bounds = forecastBoundsForDate(f, date);
+              if (!bounds) continue;
+              layoutItems.push({ key: `f-${f.id}`, startMs: bounds.startMs, endMs: bounds.endMs, type: "forecast", ref: f });
             }
             const { laneOf, laneCount } = computeLanes(layoutItems);
-            const laneHeight = 22; // px
-            const rowHeight = Math.max(40, laneCount * laneHeight + (laneCount - 1) * 4 + 8);
+            const laneHeight = 24; // px
+            const rowHeight = Math.max(42, laneCount * laneHeight + (laneCount - 1) * 4 + 8);
 
             return (
               <div key={c.id} className="relative group" style={{ height: rowHeight }}>
@@ -421,16 +581,18 @@ export function DayTimeline({
                       ? ` · ${g.sectors.join(", ")}`
                       : ` · ${g.sectors.length} secteurs`;
                   return (
-                    <div
+                    <button
                       key={g.key}
-                      className={`absolute rounded border ${tone} px-1 overflow-hidden flex items-center`}
+                      type="button"
+                      onClick={() => setDetail(outageDetail(g, end, date))}
+                      className={`absolute rounded border ${tone} px-1 overflow-hidden flex items-center text-left focus:outline-none focus:ring-2 focus:ring-primary/40`}
                       style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
                       title={`${formatHM(g.starts_at)}–${outageEndLabel(g.primary, end)}${sectorLabel}`}
                     >
                       <span className="text-[10px] font-medium truncate">
                          {formatHM(g.starts_at)}–{outageEndLabel(g.primary, end)}{sectorLabel}
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
                 {cForecasts.map((f) => {
@@ -440,18 +602,20 @@ export function DayTimeline({
                   const top = 4 + lane * (laneHeight + 4);
                   const intensity = f.probability >= 0.7 ? "bg-warning/25 border-warning/60" : "bg-warning/10 border-warning/40";
                   return (
-                    <div
+                    <button
                       key={f.id}
-                      className={`absolute rounded border border-dashed ${intensity} px-1 overflow-hidden flex items-center`}
+                      type="button"
+                      onClick={() => setDetail(forecastDetail(f, date))}
+                      className={`absolute rounded border border-dashed ${intensity} px-1 overflow-hidden flex items-center text-left focus:outline-none focus:ring-2 focus:ring-primary/40`}
                       style={{ left: `${segment.left}%`, width: `${segment.width}%`, top, height: laneHeight }}
                       title={`Prévision ${Math.round(f.probability * 100)}% · ${f.basis ?? ""}`}
                     >
-                      <span className="text-[10px] font-medium truncate flex items-center gap-1">
+                      <span className="text-[10px] font-medium truncate flex items-center gap-1 w-full">
                         <Sparkles className="h-2.5 w-2.5 shrink-0" />
-                        <span className="truncate">{f.window_start?.slice(0, 5)}–{f.window_end?.slice(0, 5)}</span>
+                        <span className="truncate">{forecastWindowLabel(f, date)}</span>
                         <span className="ml-auto pl-1 font-semibold text-warning-foreground/90">{Math.round(f.probability * 100)}%</span>
                       </span>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
@@ -510,7 +674,7 @@ export function DayTimeline({
                 <Sparkles className="h-3 w-3" /> Prévision
               </span>
               <span className="font-medium">
-                {f.window_start?.slice(0, 5)} → {f.window_end?.slice(0, 5)}
+                {forecastWindowLabel(f, date)}
               </span>
               <span className="text-xs text-muted-foreground">
                 probabilité {Math.round(f.probability * 100)}% · confiance {Math.round(f.confidence * 100)}%
@@ -521,6 +685,8 @@ export function DayTimeline({
           ))}
         </ul>
       )}
+
+      <TimelineDetailDialog detail={detail} onOpenChange={(open) => { if (!open) setDetail(null); }} />
     </div>
   );
 }
