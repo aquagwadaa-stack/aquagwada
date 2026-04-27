@@ -29,6 +29,11 @@ type Outage = {
   status: string;
 };
 
+type ExistingNotificationLog = {
+  id: string;
+  dry_run: boolean;
+};
+
 function inQuietHours(start: string | null, end: string | null, now: Date): boolean {
   if (!start || !end) return false;
   const cur = now.getHours() * 60 + now.getMinutes();
@@ -53,18 +58,52 @@ function kindEnabled(pref: Pref, kind: NotificationKind) {
   return pref.notify_preventive_water_back;
 }
 
+function timingWindowMs(hoursBefore: number) {
+  if (!Number.isFinite(hoursBefore) || hoursBefore <= 0) return 0;
+  return hoursBefore * 3600_000;
+}
+
+function isInCatchUpWindow(targetIso: string | null, hoursBefore: number, now: Date) {
+  if (!targetIso) return false;
+  const targetMs = new Date(targetIso).getTime();
+  if (!Number.isFinite(targetMs)) return false;
+
+  const nowMs = now.getTime();
+  const leadMs = timingWindowMs(hoursBefore);
+  return leadMs > 0 && targetMs > nowMs && nowMs >= targetMs - leadMs;
+}
+
 function insideUserTimingWindow(pref: Pref, outage: Outage, kind: NotificationKind, now: Date) {
   if (kind === "preventive") {
-    const startMs = new Date(outage.starts_at).getTime();
-    const targetMs = now.getTime() + pref.preventive_hours_before * 3600_000;
-    return Math.abs(startMs - targetMs) <= 10 * 60_000;
+    return isInCatchUpWindow(outage.starts_at, pref.preventive_hours_before, now);
   }
-  if (kind === "preventive_water_back" && outage.ends_at) {
-    const endMs = new Date(outage.ends_at).getTime();
-    const targetMs = now.getTime() + pref.preventive_water_back_hours_before * 3600_000;
-    return Math.abs(endMs - targetMs) <= 10 * 60_000;
+  if (kind === "preventive_water_back") {
+    return isInCatchUpWindow(outage.ends_at, pref.preventive_water_back_hours_before, now);
   }
   return true;
+}
+
+async function getExistingNotificationLog(
+  userId: string,
+  outageId: string,
+  channel: NotificationChannel,
+  kind: NotificationKind,
+): Promise<ExistingNotificationLog | null> {
+  const { data, error } = await supabaseAdmin
+    .from("notification_logs")
+    .select("id, dry_run")
+    .eq("user_id", userId)
+    .eq("outage_id", outageId)
+    .eq("channel", channel)
+    .eq("kind", kind)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("[dispatch_notifications] log lookup error", error.message);
+    return null;
+  }
+
+  return (data as ExistingNotificationLog | null) ?? null;
 }
 
 function buildPayload(kind: NotificationKind, outage: Outage, communeName: string): PushPayload {
@@ -176,6 +215,12 @@ export async function dispatchNotifications(): Promise<{
         }
 
         for (const channel of channels) {
+          const existingLog = await getExistingNotificationLog(pref.user_id, outage.id, channel, kind);
+          if (existingLog && !existingLog.dry_run) {
+            skipped += 1;
+            continue;
+          }
+
           let sent = false;
           let note = "";
 
@@ -202,24 +247,28 @@ export async function dispatchNotifications(): Promise<{
             note = result.ok ? "email envoye via Resend" : `email non envoye: ${result.error}`;
           }
 
-          const { error } = await supabaseAdmin.from("notification_logs").insert({
+          const logRow = {
             user_id: pref.user_id,
             outage_id: outage.id,
             channel,
             kind,
             dry_run: !sent,
+            sent_at: new Date().toISOString(),
             payload: {
               commune_id: outage.commune_id,
               starts_at: outage.starts_at,
               ends_at: outage.ends_at,
               note,
             },
-          });
+          };
+
+          const { error } = existingLog
+            ? await supabaseAdmin.from("notification_logs").update(logRow).eq("id", existingLog.id)
+            : await supabaseAdmin.from("notification_logs").insert(logRow);
 
           if (!error) logged += 1;
-          else if (!String(error.message).toLowerCase().includes("duplicate")) {
-            console.error("[dispatch_notifications] insert error:", error.message);
-          }
+          else if (String(error.message).toLowerCase().includes("duplicate")) skipped += 1;
+          else console.error("[dispatch_notifications] log write error:", error.message);
         }
       }
     }
