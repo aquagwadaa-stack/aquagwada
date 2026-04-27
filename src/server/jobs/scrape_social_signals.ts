@@ -4,13 +4,13 @@ const FIRECRAWL_BASE = "https://api.firecrawl.dev/v2";
 const GUADELOUPE_TZ = "America/Guadeloupe";
 
 const SEARCH_QUERIES = [
-  'site:facebook.com Guadeloupe "coupure d\'eau"',
-  'site:facebook.com Guadeloupe "plus d\'eau"',
-  'site:facebook.com Guadeloupe "pas d\'eau"',
-  'site:facebook.com Guadeloupe "eau coupée"',
-  'site:facebook.com Guadeloupe "basse pression" eau',
-  'site:facebook.com SMGEAG coupure eau',
-  'site:facebook.com "tour d\'eau" Guadeloupe',
+  "site:facebook.com Guadeloupe \"coupure d'eau\"",
+  "site:facebook.com Guadeloupe \"plus d'eau\"",
+  "site:facebook.com Guadeloupe \"pas d'eau\"",
+  "site:facebook.com Guadeloupe \"eau coupée\"",
+  "site:facebook.com Guadeloupe \"basse pression\" eau",
+  "site:facebook.com SMGEAG coupure eau",
+  "site:facebook.com \"tour d'eau\" Guadeloupe",
 ];
 
 type CommuneRow = { id: string; name: string; slug: string };
@@ -69,12 +69,16 @@ function hashId(input: string): string {
 }
 
 function guadeloupeDateKey(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
+  const parts = new Intl.DateTimeFormat("en", {
     timeZone: GUADELOUPE_TZ,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(date);
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === "year")?.value ?? "1970";
+  const month = parts.find((p) => p.type === "month")?.value ?? "01";
+  const day = parts.find((p) => p.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
 }
 
 function toGuadeloupeDateTime(dateKey: string, minutesOfDay: number): Date {
@@ -97,10 +101,7 @@ function parseMentionedDateKey(text: string, now: Date): string | null {
   const n = norm(text);
   const today = guadeloupeDateKey(now);
   if (/\b(aujourd hui|ce matin|ce soir|actuellement|en ce moment|maintenant)\b/.test(n)) return today;
-  if (/\bhier\b/.test(n)) {
-    const d = new Date(now.getTime() - 86400_000);
-    return guadeloupeDateKey(d);
-  }
+  if (/\bhier\b/.test(n)) return guadeloupeDateKey(new Date(now.getTime() - 86400_000));
 
   const m = n.match(/\b(\d{1,2})\s+(janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)(?:\s+(\d{4}))?\b/);
   if (!m) return null;
@@ -191,16 +192,19 @@ function toCandidate(result: SearchResult, communes: CommuneRow[], now: Date): S
   if (!result.url || !/facebook\.com/i.test(result.url)) return null;
   if (!isWaterSignal(text)) return null;
 
+  const dateKey = parseMentionedDateKey(text, now);
+  const currentMarker = hasCurrentMarker(text, now);
+  if (!dateKey && !currentMarker) return null;
+
   const communeIds = findCommuneIds(text, communes);
   if (communeIds.length === 0) return null;
 
-  const dateKey = parseMentionedDateKey(text, now);
   const timeMinutes = parseTimeMinutes(text);
   const startsAt = dateKey
     ? toGuadeloupeDateTime(dateKey, timeMinutes ?? 8 * 60)
     : new Date(now.getTime() - 30 * 60_000);
 
-  const isCurrent = hasCurrentMarker(text, now) && (now.getTime() - startsAt.getTime()) < 36 * 3600_000;
+  const isCurrent = currentMarker && (now.getTime() - startsAt.getTime()) < 36 * 3600_000;
   const confidence = Math.min(0.72, 0.42 + (result.markdown ? 0.08 : 0) + (timeMinutes !== null ? 0.08 : 0) + (dateKey ? 0.06 : 0));
 
   return {
@@ -337,7 +341,8 @@ export async function scrapeSocialSignals(): Promise<{
   if (cErr) throw cErr;
   const communeList = (communes ?? []) as CommuneRow[];
 
-  const limit = Math.min(10, Math.max(3, Number(process.env.SOCIAL_SIGNAL_SEARCH_LIMIT ?? 6)));
+  const parsedLimit = Number(process.env.SOCIAL_SIGNAL_SEARCH_LIMIT ?? 6);
+  const limit = Number.isFinite(parsedLimit) ? Math.min(10, Math.max(3, parsedLimit)) : 6;
   const seenUrls = new Set<string>();
   const candidates: SignalCandidate[] = [];
   let pagesScanned = 0;
