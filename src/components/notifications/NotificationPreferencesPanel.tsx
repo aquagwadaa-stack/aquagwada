@@ -8,7 +8,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { PLAN_CAPS, type Tier } from "@/lib/subscription";
 import { InstallAndPushDialog } from "@/components/notifications/InstallAndPushDialog";
-import { getNotificationPermission, isPreviewContext, isPushSupported } from "@/lib/push-notifications";
+import { getActivePushSubscription, getNotificationPermission, isPreviewContext, isPushSupported } from "@/lib/push-notifications";
 
 type Prefs = {
   push_enabled: boolean;
@@ -23,6 +23,15 @@ type Prefs = {
   preventive_water_back_hours_before: number;
   quiet_hours_start: string | null;
   quiet_hours_end: string | null;
+};
+
+type NotificationLogRow = {
+  id: string;
+  channel: string;
+  kind: string;
+  sent_at: string;
+  dry_run: boolean;
+  payload: { note?: string } | null;
 };
 
 const DEFAULT_PREFS: Prefs = {
@@ -65,8 +74,7 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   useEffect(() => {
     setInstalled(isStandalone());
     if (isPushSupported() && !isPreviewContext()) {
-      navigator.serviceWorker.getRegistration().then(async (reg) => {
-        const sub = await reg?.pushManager.getSubscription();
+      getActivePushSubscription().then(async (sub) => {
         setPushSubscribed(!!sub);
         setPushPermission(await getNotificationPermission());
       });
@@ -139,12 +147,12 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("notification_logs")
-        .select("id, channel, kind, sent_at, dry_run")
+        .select("id, channel, kind, sent_at, dry_run, payload")
         .eq("user_id", user!.id)
         .order("sent_at", { ascending: false })
         .limit(8);
       if (error) throw error;
-      return data ?? [];
+      return (data ?? []) as NotificationLogRow[];
     },
     staleTime: 30_000,
   });
@@ -235,16 +243,21 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
           </p>
         ) : (
           <ul className="space-y-1.5">
-            {(logs.data ?? []).map((log: { id: string; channel: string; kind: string; sent_at: string; dry_run: boolean }) => (
-              <li key={log.id} className="flex items-center justify-between gap-2 rounded-md border border-border bg-card/50 px-2.5 py-1.5 text-xs">
-                <span className="flex items-center gap-2 min-w-0">
-                  <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider">{log.channel}</span>
-                  <span className="truncate text-foreground/80">{log.kind}</span>
-                  {log.dry_run && <span className="rounded bg-warning/15 border border-warning/40 px-1 py-0.5 text-[9px] font-medium">test</span>}
-                </span>
-                <span className="text-muted-foreground shrink-0">
-                  {new Date(log.sent_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
-                </span>
+            {(logs.data ?? []).map((log) => (
+              <li key={log.id} className="rounded-md border border-border bg-card/50 px-2.5 py-1.5 text-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex items-center gap-2 min-w-0">
+                    <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider">{log.channel}</span>
+                    <span className="truncate text-foreground/80">{log.kind}</span>
+                    {log.dry_run && <span className="rounded bg-warning/15 border border-warning/40 px-1 py-0.5 text-[9px] font-medium">non envoye</span>}
+                  </span>
+                  <span className="text-muted-foreground shrink-0">
+                    {new Date(log.sent_at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+                {log.payload?.note && (
+                  <p className="mt-1 text-[10px] leading-snug text-muted-foreground">{log.payload.note}</p>
+                )}
               </li>
             ))}
           </ul>
