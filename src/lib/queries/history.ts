@@ -7,6 +7,7 @@ export type HistoryEntry = {
   ends_at: string;
   duration_minutes: number;
   source: string;
+  source_url: string | null;
   reliability_score: number;
   confidence_score: number;
   cause: string | null;
