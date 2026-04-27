@@ -72,9 +72,9 @@ export const Route = createFileRoute("/api/public/payments/webhook")({
 
 async function markStripeEventProcessed(eventId: string | undefined, eventType: string) {
   if (!eventId) return true;
-  const { error } = await supabaseAdmin
-    .from("stripe_event_logs" as never)
-    .insert({ id: eventId, event_type: eventType } as never);
+  const { error } = await (supabaseAdmin as any)
+    .from("stripe_event_logs")
+    .insert({ id: eventId, event_type: eventType });
   if (!error) return true;
   if (String(error.message).toLowerCase().includes("duplicate")) return false;
   console.warn("[stripe-webhook] event log insert failed:", error.message);
