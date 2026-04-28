@@ -21,6 +21,8 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api.public.payments.webhook'
 import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
+import { Route as ApiPublicJobsSendTrialEmailsRouteImport } from './routes/api.public.jobs.send-trial-emails'
+import { Route as ApiPublicJobsScrapeSocialSignalsRouteImport } from './routes/api.public.jobs.scrape-social-signals'
 import { Route as ApiPublicJobsScrapeSmgeagRouteImport } from './routes/api.public.jobs.scrape-smgeag'
 import { Route as ApiPublicJobsScrapePlanningRouteImport } from './routes/api.public.jobs.scrape-planning'
 import { Route as ApiPublicJobsScrapeAiHistoryRouteImport } from './routes/api.public.jobs.scrape-ai-history'
@@ -92,6 +94,18 @@ const ApiPublicOutagesIngestRoute = ApiPublicOutagesIngestRouteImport.update({
   path: '/api/public/outages/ingest',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiPublicJobsSendTrialEmailsRoute =
+  ApiPublicJobsSendTrialEmailsRouteImport.update({
+    id: '/api/public/jobs/send-trial-emails',
+    path: '/api/public/jobs/send-trial-emails',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiPublicJobsScrapeSocialSignalsRoute =
+  ApiPublicJobsScrapeSocialSignalsRouteImport.update({
+    id: '/api/public/jobs/scrape-social-signals',
+    path: '/api/public/jobs/scrape-social-signals',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicJobsScrapeSmgeagRoute =
   ApiPublicJobsScrapeSmgeagRouteImport.update({
     id: '/api/public/jobs/scrape-smgeag',
@@ -167,6 +181,8 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/scrape-ai-history': typeof ApiPublicJobsScrapeAiHistoryRoute
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
+  '/api/public/jobs/scrape-social-signals': typeof ApiPublicJobsScrapeSocialSignalsRoute
+  '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
@@ -190,6 +206,8 @@ export interface FileRoutesByTo {
   '/api/public/jobs/scrape-ai-history': typeof ApiPublicJobsScrapeAiHistoryRoute
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
+  '/api/public/jobs/scrape-social-signals': typeof ApiPublicJobsScrapeSocialSignalsRoute
+  '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
@@ -214,6 +232,8 @@ export interface FileRoutesById {
   '/api/public/jobs/scrape-ai-history': typeof ApiPublicJobsScrapeAiHistoryRoute
   '/api/public/jobs/scrape-planning': typeof ApiPublicJobsScrapePlanningRoute
   '/api/public/jobs/scrape-smgeag': typeof ApiPublicJobsScrapeSmgeagRoute
+  '/api/public/jobs/scrape-social-signals': typeof ApiPublicJobsScrapeSocialSignalsRoute
+  '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
 }
@@ -239,6 +259,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-ai-history'
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
+    | '/api/public/jobs/scrape-social-signals'
+    | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
   fileRoutesByTo: FileRoutesByTo
@@ -262,6 +284,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-ai-history'
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
+    | '/api/public/jobs/scrape-social-signals'
+    | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
   id:
@@ -285,6 +309,8 @@ export interface FileRouteTypes {
     | '/api/public/jobs/scrape-ai-history'
     | '/api/public/jobs/scrape-planning'
     | '/api/public/jobs/scrape-smgeag'
+    | '/api/public/jobs/scrape-social-signals'
+    | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
   fileRoutesById: FileRoutesById
@@ -309,6 +335,8 @@ export interface RootRouteChildren {
   ApiPublicJobsScrapeAiHistoryRoute: typeof ApiPublicJobsScrapeAiHistoryRoute
   ApiPublicJobsScrapePlanningRoute: typeof ApiPublicJobsScrapePlanningRoute
   ApiPublicJobsScrapeSmgeagRoute: typeof ApiPublicJobsScrapeSmgeagRoute
+  ApiPublicJobsScrapeSocialSignalsRoute: typeof ApiPublicJobsScrapeSocialSignalsRoute
+  ApiPublicJobsSendTrialEmailsRoute: typeof ApiPublicJobsSendTrialEmailsRoute
   ApiPublicOutagesIngestRoute: typeof ApiPublicOutagesIngestRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
 }
@@ -399,6 +427,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiPublicOutagesIngestRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/public/jobs/send-trial-emails': {
+      id: '/api/public/jobs/send-trial-emails'
+      path: '/api/public/jobs/send-trial-emails'
+      fullPath: '/api/public/jobs/send-trial-emails'
+      preLoaderRoute: typeof ApiPublicJobsSendTrialEmailsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/public/jobs/scrape-social-signals': {
+      id: '/api/public/jobs/scrape-social-signals'
+      path: '/api/public/jobs/scrape-social-signals'
+      fullPath: '/api/public/jobs/scrape-social-signals'
+      preLoaderRoute: typeof ApiPublicJobsScrapeSocialSignalsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/public/jobs/scrape-smgeag': {
       id: '/api/public/jobs/scrape-smgeag'
       path: '/api/public/jobs/scrape-smgeag'
@@ -486,6 +528,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicJobsScrapeAiHistoryRoute: ApiPublicJobsScrapeAiHistoryRoute,
   ApiPublicJobsScrapePlanningRoute: ApiPublicJobsScrapePlanningRoute,
   ApiPublicJobsScrapeSmgeagRoute: ApiPublicJobsScrapeSmgeagRoute,
+  ApiPublicJobsScrapeSocialSignalsRoute: ApiPublicJobsScrapeSocialSignalsRoute,
+  ApiPublicJobsSendTrialEmailsRoute: ApiPublicJobsSendTrialEmailsRoute,
   ApiPublicOutagesIngestRoute: ApiPublicOutagesIngestRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
 }
