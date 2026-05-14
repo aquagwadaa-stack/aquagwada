@@ -16,8 +16,9 @@ export function minutesInGuadeloupeDay(value: Date): number {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    hourCycle: "h23",
   }).formatToParts(value);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0");
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0") % 24;
   const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
   return hour * 60 + minute;
 }
@@ -28,6 +29,7 @@ export function formatGuadeloupeDateTime(value: string | Date): string {
     timeZone: GUADELOUPE_TIME_ZONE,
     dateStyle: "short",
     timeStyle: "short",
+    hourCycle: "h23",
   }).format(date);
 }
 
@@ -38,5 +40,6 @@ export function formatGuadeloupeTime(value: string | Date): string {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
+    hourCycle: "h23",
   }).format(date);
 }
