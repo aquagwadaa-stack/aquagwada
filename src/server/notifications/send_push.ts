@@ -1,6 +1,7 @@
 import webpush from "web-push";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { DEFAULT_VAPID_PUBLIC_KEY } from "@/lib/vapid";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 type PushSubscriptionRow = {
   endpoint: string;
@@ -18,7 +19,7 @@ export type PushSendResult = {
 function configure() {
   const pub = process.env.VAPID_PUBLIC_KEY || process.env.VITE_VAPID_PUBLIC_KEY || DEFAULT_VAPID_PUBLIC_KEY;
   const priv = process.env.VAPID_PRIVATE_KEY;
-  const sub = process.env.VAPID_SUBJECT || "mailto:aqua.gwadaa@gmail.com";
+  const sub = process.env.VAPID_SUBJECT || `mailto:${CONTACT_EMAIL}`;
 
   if (!priv) {
     throw new Error("VAPID_PRIVATE_KEY missing in Lovable secrets");

@@ -1,3 +1,5 @@
+import { CONTACT_EMAIL } from "@/lib/contact";
+
 type EmailPayload = {
   to: string;
   subject: string;
@@ -34,12 +36,24 @@ function layout(title: string, body: string, action?: { label: string; url: stri
     ? `<p><a href="${escapeHtml(action.url)}" style="display:inline-block;background:#0f6b9a;color:#fff;text-decoration:none;padding:12px 16px;border-radius:8px;font-weight:700">${escapeHtml(action.label)}</a></p>`
     : "";
 
-  return `<!doctype html><html><body style="margin:0;background:#f6fbfd;font-family:Arial,sans-serif;color:#102033"><div style="max-width:560px;margin:0 auto;padding:24px"><div style="background:#fff;border:1px solid #d9ecf2;border-radius:12px;padding:24px"><p style="margin:0 0 12px;color:#168aad;font-weight:700">AquaGwada</p><h1 style="font-size:22px;line-height:1.25;margin:0 0 16px">${safeTitle}</h1><div style="font-size:15px;line-height:1.55;color:#304050">${safeBody}</div>${actionHtml}<p style="font-size:12px;color:#667;margin-top:24px">Vous recevez cet email car vous utilisez AquaGwada.</p></div></div></body></html>`;
+  return `<!doctype html><html><body style="margin:0;background:#f6fbfd;font-family:Arial,sans-serif;color:#102033"><div style="max-width:560px;margin:0 auto;padding:24px"><div style="background:#fff;border:1px solid #d9ecf2;border-radius:12px;padding:24px"><p style="margin:0 0 12px;color:#168aad;font-weight:700">AquaGwada</p><h1 style="font-size:22px;line-height:1.25;margin:0 0 16px">${safeTitle}</h1><div style="font-size:15px;line-height:1.55;color:#304050">${safeBody}</div>${actionHtml}<p style="font-size:12px;color:#667;margin-top:24px">Vous recevez cet email car vous utilisez AquaGwada. Contact : <a href="mailto:${CONTACT_EMAIL}" style="color:#0f6b9a">${CONTACT_EMAIL}</a></p></div></div></body></html>`;
 }
 
 function appUrl(path = "/ma-commune") {
   const origin = process.env.PUBLIC_SITE_URL || process.env.VITE_PUBLIC_SITE_URL || "https://aquagwada.fr";
   return `${origin.replace(/\/$/, "")}${path}`;
+}
+
+function resendErrorMessage(data: unknown, status: number) {
+  if (data && typeof data === "object") {
+    const obj = data as Record<string, unknown>;
+    if (typeof obj.message === "string") return obj.message;
+    if (typeof obj.error === "string") return obj.error;
+    if (obj.error && typeof obj.error === "object" && typeof (obj.error as Record<string, unknown>).message === "string") {
+      return String((obj.error as Record<string, unknown>).message);
+    }
+  }
+  return `Resend HTTP ${status}`;
 }
 
 export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
@@ -49,6 +63,7 @@ export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
   }
 
   const from = process.env.EMAIL_FROM || DEFAULT_FROM;
+  const replyTo = process.env.EMAIL_REPLY_TO || CONTACT_EMAIL;
   const response = await fetch(RESEND_ENDPOINT, {
     method: "POST",
     headers: {
@@ -61,13 +76,13 @@ export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
       subject: payload.subject,
       html: payload.html,
       text: payload.text,
+      reply_to: replyTo,
     }),
   });
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = typeof data?.message === "string" ? data.message : `Resend HTTP ${response.status}`;
-    return { ok: false, error: message };
+    return { ok: false, error: resendErrorMessage(data, response.status) };
   }
 
   return { ok: true, id: typeof data?.id === "string" ? data.id : undefined };
