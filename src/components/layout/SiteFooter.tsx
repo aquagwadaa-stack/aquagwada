@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { Droplets, Mail } from "lucide-react";
+import { CONTACT_EMAIL, CONTACT_MAILTO } from "@/lib/contact";
 
 export function SiteFooter() {
   return (
@@ -13,7 +14,7 @@ export function SiteFooter() {
             <span className="font-display font-semibold">AquaGwada</span>
           </Link>
           <p className="mt-3 text-sm text-muted-foreground max-w-xs">
-            Le suivi des coupures d'eau en Guadeloupe, en temps réel.
+            Le suivi des coupures d'eau en Guadeloupe, en temps reel.
           </p>
         </div>
         <div>
@@ -25,24 +26,24 @@ export function SiteFooter() {
           </ul>
         </div>
         <div>
-          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Légal</p>
+          <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Legal</p>
           <ul className="space-y-2 text-sm">
             <li><Link to="/cgu" className="hover:text-foreground text-muted-foreground">CGU</Link></li>
-            <li><Link to="/confidentialite" className="hover:text-foreground text-muted-foreground">Confidentialité</Link></li>
-            <li><Link to="/a-propos" className="hover:text-foreground text-muted-foreground">À propos</Link></li>
+            <li><Link to="/confidentialite" className="hover:text-foreground text-muted-foreground">Confidentialite</Link></li>
+            <li><Link to="/a-propos" className="hover:text-foreground text-muted-foreground">A propos</Link></li>
           </ul>
         </div>
         <div>
           <p className="text-xs uppercase tracking-wider text-muted-foreground mb-3">Contact</p>
           <a
-            href="mailto:aqua.gwadaa@gmail.com"
+            href={CONTACT_MAILTO}
             className="inline-flex items-center gap-2 text-sm font-medium text-foreground hover:text-primary"
           >
             <Mail className="h-4 w-4" />
-            aqua.gwadaa@gmail.com
+            {CONTACT_EMAIL}
           </a>
           <p className="mt-3 text-xs text-muted-foreground leading-relaxed">
-            Une question, un partenariat ou une correction de donnée ? Écrivez-nous directement.
+            Une question, un partenariat ou une correction de donnee ? Ecrivez-nous directement.
           </p>
         </div>
       </div>
@@ -50,12 +51,12 @@ export function SiteFooter() {
         <div className="rounded-xl border border-border/60 bg-background/70 p-4">
           <p className="text-xs uppercase tracking-wider text-muted-foreground mb-2">Avertissement</p>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Les données présentées sont indicatives et issues de sources publiques, officielles et de signalements citoyens. Vérifiez auprès de votre fournisseur d'eau.
+            Les donnees presentees sont indicatives et issues de sources publiques, officielles et de signalements citoyens. Verifiez aupres de votre fournisseur d'eau.
           </p>
         </div>
       </div>
       <div className="border-t border-border/60 py-4 text-center text-xs text-muted-foreground">
-        © {new Date().getFullYear()} AquaGwada — Fait en Guadeloupe 🇬🇵
+        © {new Date().getFullYear()} AquaGwada - Fait en Guadeloupe
       </div>
     </footer>
   );
