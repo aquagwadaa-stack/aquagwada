@@ -12,6 +12,7 @@ import { fetchEffectiveSubscription, startProTrial } from "@/lib/queries/subscri
 import { StripeEmbeddedCheckoutForm } from "@/components/payments/StripeEmbeddedCheckout";
 import { getStripeEnvironment } from "@/lib/stripe";
 import { createPortalSession } from "@/server/payments/checkout";
+import { CONTACT_EMAIL } from "@/lib/contact";
 
 type PlanRow = {
   id: string;
@@ -51,6 +52,11 @@ function fmtHistory(days: number) {
 function checkoutReturnUrl() {
   const origin = typeof window !== "undefined" ? window.location.origin : "https://aquagwada.fr";
   return `${origin}/checkout/return?session_id={CHECKOUT_SESSION_ID}`;
+}
+
+function businessMailto() {
+  const subject = encodeURIComponent("Demande de devis Business AquaGwada");
+  return `mailto:${CONTACT_EMAIL}?subject=${subject}`;
 }
 
 function PricingPage() {
@@ -207,7 +213,7 @@ function PricingPage() {
                   )
                 ) : isBusiness ? (
                   <Button asChild className="mt-6 w-full gap-2" variant="outline">
-                    <a href="mailto:aqua.gwadaa@gmail.com?subject=Demande%20de%20devis%20Business%20AquaGwada">
+                    <a href={businessMailto()}>
                       <Mail className="h-4 w-4" /> Demander un devis
                     </a>
                   </Button>
