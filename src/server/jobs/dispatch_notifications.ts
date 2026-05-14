@@ -1,6 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { sendPushToUser, type PushPayload } from "@/server/notifications/send_push";
 import { outageEmail, sendEmail } from "@/server/email/resend";
+import { formatGuadeloupeDateTime, formatGuadeloupeTime, minutesInGuadeloupeDay } from "@/lib/timezone";
 
 type NotificationKind = "outage_start" | "water_back" | "preventive" | "preventive_water_back";
 type NotificationChannel = "push" | "email";
@@ -36,7 +37,7 @@ type ExistingNotificationLog = {
 
 function inQuietHours(start: string | null, end: string | null, now: Date): boolean {
   if (!start || !end) return false;
-  const cur = now.getHours() * 60 + now.getMinutes();
+  const cur = minutesInGuadeloupeDay(now);
   const [sh, sm] = start.split(":").map(Number);
   const [eh, em] = end.split(":").map(Number);
   const s = sh * 60 + sm;
@@ -120,8 +121,8 @@ function buildPayload(kind: NotificationKind, outage: Outage, communeName: strin
   const bodies: Record<NotificationKind, string> = {
     outage_start: "Une coupure vient de debuter. Suivez l'evolution dans l'app.",
     water_back: "L'eau a ete retablie. Pensez a purger les premiers litres.",
-    preventive: `Coupure planifiee le ${new Date(outage.starts_at).toLocaleString("fr-FR", { dateStyle: "short", timeStyle: "short" })}.`,
-    preventive_water_back: `Retour de l'eau prevu vers ${outage.ends_at ? new Date(outage.ends_at).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }) : "--"}.`,
+    preventive: `Coupure planifiee le ${formatGuadeloupeDateTime(outage.starts_at)} (heure Guadeloupe).`,
+    preventive_water_back: `Retour de l'eau prevu vers ${outage.ends_at ? formatGuadeloupeTime(outage.ends_at) : "--"} (heure Guadeloupe).`,
   };
   return {
     title: titles[kind],
@@ -138,12 +139,13 @@ export async function dispatchNotifications(): Promise<{
   skipped: number;
 }> {
   const now = new Date();
-  const fiveMinAgo = new Date(now.getTime() - 5 * 60_000).toISOString();
+  const startLookbackIso = new Date(now.getTime() - 30 * 60_000).toISOString();
+  const endLookbackIso = new Date(now.getTime() - 90 * 60_000).toISOString();
 
   const { data: started } = await supabaseAdmin
     .from("outages")
     .select("id, commune_id, starts_at, ends_at, status")
-    .gte("starts_at", fiveMinAgo)
+    .gte("starts_at", startLookbackIso)
     .lte("starts_at", now.toISOString())
     .neq("status", "cancelled")
     .neq("status", "resolved");
@@ -151,25 +153,28 @@ export async function dispatchNotifications(): Promise<{
   const { data: ended } = await supabaseAdmin
     .from("outages")
     .select("id, commune_id, starts_at, ends_at, status")
-    .gte("ends_at", fiveMinAgo)
+    .gte("ends_at", endLookbackIso)
     .lte("ends_at", now.toISOString())
-    .eq("status", "resolved");
+    .neq("status", "cancelled");
 
   const futureMaxIso = new Date(now.getTime() + 48 * 3600_000).toISOString();
   const { data: scheduled } = await supabaseAdmin
     .from("outages")
     .select("id, commune_id, starts_at, ends_at, status")
-    .eq("status", "scheduled")
     .gte("starts_at", now.toISOString())
-    .lte("starts_at", futureMaxIso);
+    .lte("starts_at", futureMaxIso)
+    .neq("status", "cancelled")
+    .neq("status", "resolved");
 
   const wbMaxIso = new Date(now.getTime() + 6 * 3600_000).toISOString();
   const { data: aboutToEnd } = await supabaseAdmin
     .from("outages")
     .select("id, commune_id, starts_at, ends_at, status")
-    .eq("status", "ongoing")
+    .lte("starts_at", now.toISOString())
     .gte("ends_at", now.toISOString())
-    .lte("ends_at", wbMaxIso);
+    .lte("ends_at", wbMaxIso)
+    .neq("status", "cancelled")
+    .neq("status", "resolved");
 
   let candidates = 0;
   let logged = 0;
