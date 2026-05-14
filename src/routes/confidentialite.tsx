@@ -20,7 +20,7 @@ function Privacy() {
         <h2>Finalités</h2>
         <p>Fournir le service, les alertes et améliorer la qualité des données.</p>
         <h2>Vos droits (RGPD)</h2>
-        <p>Accès, rectification, suppression — par email à aqua.gwadaa@gmail.com.</p>
+        <p>Accès, rectification, suppression — par email à aquagwada.contact@gmail.com.</p>
       </article>
     </AppShell>
   );
