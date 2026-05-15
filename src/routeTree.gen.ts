@@ -19,6 +19,8 @@ import { Route as AbonnementsRouteImport } from './routes/abonnements'
 import { Route as AProposRouteImport } from './routes/a-propos'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
+import { Route as ApiNotificationsTestPushRouteImport } from './routes/api.notifications.test-push'
+import { Route as ApiNotificationsTestEmailRouteImport } from './routes/api.notifications.test-email'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api.public.payments.webhook'
 import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
 import { Route as ApiPublicJobsSendTrialEmailsRouteImport } from './routes/api.public.jobs.send-trial-emails'
@@ -83,6 +85,18 @@ const CheckoutReturnRoute = CheckoutReturnRouteImport.update({
   path: '/checkout/return',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiNotificationsTestPushRoute =
+  ApiNotificationsTestPushRouteImport.update({
+    id: '/api/notifications/test-push',
+    path: '/api/notifications/test-push',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const ApiNotificationsTestEmailRoute =
+  ApiNotificationsTestEmailRouteImport.update({
+    id: '/api/notifications/test-email',
+    path: '/api/notifications/test-email',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiPublicPaymentsWebhookRoute =
   ApiPublicPaymentsWebhookRouteImport.update({
     id: '/api/public/payments/webhook',
@@ -172,6 +186,8 @@ export interface FileRoutesByFullPath {
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
   '/checkout/return': typeof CheckoutReturnRoute
+  '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
+  '/api/notifications/test-push': typeof ApiNotificationsTestPushRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -197,6 +213,8 @@ export interface FileRoutesByTo {
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
   '/checkout/return': typeof CheckoutReturnRoute
+  '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
+  '/api/notifications/test-push': typeof ApiNotificationsTestPushRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -223,6 +241,8 @@ export interface FileRoutesById {
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
   '/checkout/return': typeof CheckoutReturnRoute
+  '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
+  '/api/notifications/test-push': typeof ApiNotificationsTestPushRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -250,6 +270,8 @@ export interface FileRouteTypes {
     | '/connexion'
     | '/ma-commune'
     | '/checkout/return'
+    | '/api/notifications/test-email'
+    | '/api/notifications/test-push'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -275,6 +297,8 @@ export interface FileRouteTypes {
     | '/connexion'
     | '/ma-commune'
     | '/checkout/return'
+    | '/api/notifications/test-email'
+    | '/api/notifications/test-push'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -300,6 +324,8 @@ export interface FileRouteTypes {
     | '/connexion'
     | '/ma-commune'
     | '/checkout/return'
+    | '/api/notifications/test-email'
+    | '/api/notifications/test-push'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -326,6 +352,8 @@ export interface RootRouteChildren {
   ConnexionRoute: typeof ConnexionRoute
   MaCommuneRoute: typeof MaCommuneRoute
   CheckoutReturnRoute: typeof CheckoutReturnRoute
+  ApiNotificationsTestEmailRoute: typeof ApiNotificationsTestEmailRoute
+  ApiNotificationsTestPushRoute: typeof ApiNotificationsTestPushRoute
   ApiPublicJobsBackfillPlanningRoute: typeof ApiPublicJobsBackfillPlanningRoute
   ApiPublicJobsCheckPreventiveRoute: typeof ApiPublicJobsCheckPreventiveRoute
   ApiPublicJobsCleanupHistoryRoute: typeof ApiPublicJobsCleanupHistoryRoute
@@ -411,6 +439,20 @@ declare module '@tanstack/react-router' {
       path: '/checkout/return'
       fullPath: '/checkout/return'
       preLoaderRoute: typeof CheckoutReturnRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/notifications/test-push': {
+      id: '/api/notifications/test-push'
+      path: '/api/notifications/test-push'
+      fullPath: '/api/notifications/test-push'
+      preLoaderRoute: typeof ApiNotificationsTestPushRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/api/notifications/test-email': {
+      id: '/api/notifications/test-email'
+      path: '/api/notifications/test-email'
+      fullPath: '/api/notifications/test-email'
+      preLoaderRoute: typeof ApiNotificationsTestEmailRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/payments/webhook': {
@@ -518,6 +560,8 @@ const rootRouteChildren: RootRouteChildren = {
   ConnexionRoute: ConnexionRoute,
   MaCommuneRoute: MaCommuneRoute,
   CheckoutReturnRoute: CheckoutReturnRoute,
+  ApiNotificationsTestEmailRoute: ApiNotificationsTestEmailRoute,
+  ApiNotificationsTestPushRoute: ApiNotificationsTestPushRoute,
   ApiPublicJobsBackfillPlanningRoute: ApiPublicJobsBackfillPlanningRoute,
   ApiPublicJobsCheckPreventiveRoute: ApiPublicJobsCheckPreventiveRoute,
   ApiPublicJobsCleanupHistoryRoute: ApiPublicJobsCleanupHistoryRoute,
