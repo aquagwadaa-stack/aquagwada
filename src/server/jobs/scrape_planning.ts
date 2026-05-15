@@ -1,21 +1,23 @@
+import { CONTACT_EMAIL } from "@/lib/contact";
+import { guadeloupeDateTimeToUtc } from "@/lib/timezone";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 /**
  * Scrape les plannings hebdomadaires SMGEAG depuis l'API publique WordPress.
- * Les plannings sont publiés sous forme d'images : on extrait donc les images
- * officielles, puis Lovable AI lit les tableaux pour produire des lignes datées.
+ * Les plannings sont publies sous forme d'images : on extrait les images
+ * officielles, puis Lovable AI lit chaque image pour produire des lignes datees.
  *
- * Règle de vérité :
- * - passé terminé => outage_history (historique réel officiel)
- * - aujourd'hui / futur => outages + forecasts avec confiance officielle élevée
- * - les prévisions statistiques ne doivent compléter qu'après ces lignes officielles
+ * Regle de verite :
+ * - passe termine => outage_history (historique reel officiel)
+ * - aujourd'hui / futur => outages + forecasts avec confiance officielle elevee
+ * - les previsions statistiques ne completent qu'apres ces lignes officielles
  */
 
 const WP_POSTS_URL = "https://www.smgeag.fr/wp-json/wp/v2/posts";
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
 const DEFAULT_BACKFILL_SINCE = "2025-10-01";
-
 const OFFICIAL_BASIS_PREFIX = "Planning officiel SMGEAG";
+const DEFAULT_MIN_IMPORTED_ROWS = 12;
 
 type CommuneRow = { id: string; name: string; slug: string };
 
@@ -45,7 +47,14 @@ type PersistStats = {
   forecastsUpserted: number;
   skipped: number;
   errors: number;
-  aiFailed: number;
+};
+
+type ExtractionResult = {
+  items: AIPlanningItem[];
+  images: number;
+  imagesFailed: number;
+  modelsUsed: string[];
+  errors: string[];
 };
 
 function norm(s: string): string {
@@ -53,7 +62,7 @@ function norm(s: string): string {
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[’']/g, " ")
+    .replace(/[\u2019']/g, " ")
     .replace(/[^a-z0-9]+/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -62,7 +71,7 @@ function norm(s: string): string {
 function decodeHtml(s: string): string {
   return (s || "")
     .replace(/&amp;/g, "&")
-    .replace(/&#8217;|&rsquo;/g, "’")
+    .replace(/&#8217;|&rsquo;/g, "'")
     .replace(/&quot;/g, '"')
     .replace(/&#038;/g, "&")
     .replace(/&nbsp;/g, " ")
@@ -77,20 +86,11 @@ function hashId(input: string): string {
   return `smgp_${(h >>> 0).toString(36)}`;
 }
 
-/** Mappe une zone SMGEAG (déduite du nom d'image) vers une liste de communes. */
 const ZONE_TO_COMMUNES: Record<string, string[]> = {
-  centre: [
-    "les-abymes", "pointe-a-pitre", "le-gosier", "baie-mahault", "petit-bourg", "goyave",
-  ],
-  "grande terre": [
-    "le-moule", "morne-a-l-eau", "saint-francois", "sainte-anne", "petit-canal", "port-louis", "anse-bertrand",
-  ],
-  "sud basse terre": [
-    "capesterre-belle-eau", "trois-rivieres", "vieux-fort", "gourbeyre", "basse-terre", "saint-claude", "baillif",
-  ],
-  "nord basse terre": [
-    "sainte-rose", "deshaies", "bouillante", "pointe-noire", "vieux-habitants", "lamentin",
-  ],
+  centre: ["les-abymes", "pointe-a-pitre", "le-gosier", "baie-mahault", "petit-bourg", "goyave"],
+  "grande terre": ["le-moule", "morne-a-l-eau", "saint-francois", "sainte-anne", "petit-canal", "port-louis", "anse-bertrand"],
+  "sud basse terre": ["capesterre-belle-eau", "trois-rivieres", "vieux-fort", "gourbeyre", "basse-terre", "saint-claude", "baillif"],
+  "nord basse terre": ["sainte-rose", "deshaies", "bouillante", "pointe-noire", "vieux-habitants", "lamentin"],
   saintes: ["terre-de-haut", "terre-de-bas"],
   desirade: ["la-desirade"],
   "marie galante": ["grand-bourg", "saint-louis", "capesterre-de-marie-galante"],
@@ -100,53 +100,26 @@ function detectZoneFromUrl(url: string): string | null {
   const n = norm(url);
   if (n.includes("nord basse")) return "nord basse terre";
   if (n.includes("sud basse")) return "sud basse terre";
+  if (n.includes("basse terre")) return "sud basse terre";
   if (n.includes("grande terre")) return "grande terre";
   if (n.includes("marie galante")) return "marie galante";
-  if (n.includes("desirade") || n.includes("désirade")) return "desirade";
+  if (n.includes("desirade")) return "desirade";
   if (n.includes("saintes")) return "saintes";
   if (n.includes("centre")) return "centre";
   return null;
 }
 
-/** Extrait les bornes de la semaine depuis l'URL ou le titre (ex: "du 20042026 au 26042026" ou "du 20 au 26 avril 2026"). */
-function extractWeekRange(post: WPPost & { imageUrls: string[] }): { start: Date; end: Date } | null {
-  // 1) Cherche d'abord un format compact dans les noms d'images
-  for (const img of post.imageUrls) {
-    const m = img.match(/(\d{2})(\d{2})(\d{4})[-_]au[-_](\d{2})(\d{2})(\d{4})/i);
-    if (m) {
-      const start = new Date(`${m[3]}-${m[2]}-${m[1]}T00:00:00.000Z`);
-      const end = new Date(`${m[6]}-${m[5]}-${m[4]}T23:59:59.999Z`);
-      if (!Number.isNaN(start.getTime()) && !Number.isNaN(end.getTime())) return { start, end };
-    }
-  }
-  // 2) Sinon, fallback sur la date du post : semaine commençant à la date du post
-  const postDate = new Date(post.date);
-  if (Number.isNaN(postDate.getTime())) return null;
-  const start = new Date(postDate);
-  start.setUTCHours(0, 0, 0, 0);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 6);
-  end.setUTCHours(23, 59, 59, 999);
-  return { start, end };
-}
-
-/** Communes (slugs) couvertes par les images du post, déduites des zones détectées. */
-function communesCoveredByPostImages(post: WPPost & { imageUrls: string[] }, communes: CommuneRow[]): string[] {
-  const slugs = new Set<string>();
-  for (const img of post.imageUrls) {
-    const zone = detectZoneFromUrl(img);
-    if (!zone) continue;
-    for (const slug of ZONE_TO_COMMUNES[zone] ?? []) slugs.add(slug);
-  }
-  return communes.filter((c) => slugs.has(c.slug)).map((c) => c.id);
-}
-
 function cleanJson(content: string): string {
-  return content
+  const stripped = content
     .replace(/^```json\s*/i, "")
     .replace(/^```\s*/i, "")
     .replace(/```$/i, "")
     .trim();
+
+  const first = stripped.indexOf("{");
+  const last = stripped.lastIndexOf("}");
+  if (first >= 0 && last > first) return stripped.slice(first, last + 1);
+  return stripped;
 }
 
 function normalizeTime(value: string | null | undefined): string | null {
@@ -159,21 +132,23 @@ function normalizeTime(value: string | null | undefined): string | null {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
-function toGuadeloupeDateTime(date: string, time: string): Date | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
-  if (!/^\d{2}:\d{2}$/.test(time)) return null;
-  // Les plannings SMGEAG sont publiés en heure locale Guadeloupe (UTC-4).
-  // On stocke en UTC pour la base, donc 20:00 Guadeloupe = 00:00Z le lendemain.
-  const [year, month, day] = date.split("-").map(Number);
-  const [hour, minute] = time.split(":").map(Number);
-  const d = new Date(Date.UTC(year, month - 1, day, hour + 4, minute, 0, 0));
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
 function addOneDay(d: Date): Date {
   const copy = new Date(d);
   copy.setUTCDate(copy.getUTCDate() + 1);
   return copy;
+}
+
+function guadeloupeDateKey(value = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guadeloupe",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const year = parts.find((part) => part.type === "year")?.value ?? "1970";
+  const month = parts.find((part) => part.type === "month")?.value ?? "01";
+  const day = parts.find((part) => part.type === "day")?.value ?? "01";
+  return `${year}-${month}-${day}`;
 }
 
 function extractPlanningImageUrls(contentHtml: string): string[] {
@@ -205,6 +180,8 @@ function findCommuneIds(name: string | null | undefined, communes: CommuneRow[])
     "les saintes": ["terre-de-haut", "terre-de-bas"],
     "terre de haut": ["terre-de-haut"],
     "terre de bas": ["terre-de-bas"],
+    "morne a l eau": ["morne-a-l-eau"],
+    "pointe a pitre": ["pointe-a-pitre"],
   };
 
   const directAlias = aliasToSlug[target];
@@ -230,7 +207,7 @@ function communeIdsMentionedInText(text: string, communes: CommuneRow[]): string
     const cs = norm(c.slug);
     if (cn.length >= 4 && (haystack.includes(cn) || haystack.includes(cs))) ids.add(c.id);
   }
-  for (const alias of ["cbe", "abymes", "gosier", "moule", "les saintes", "saintes"]) {
+  for (const alias of ["cbe", "abymes", "gosier", "moule", "les saintes", "saintes", "morne a l eau", "pointe a pitre"]) {
     if (haystack.includes(alias)) findCommuneIds(alias, communes).forEach((id) => ids.add(id));
   }
   return [...ids];
@@ -242,7 +219,10 @@ async function fetchPlanningPosts(opts: { since?: string; maxPosts: number }): P
 
   for (let page = 1; page <= 5 && posts.length < opts.maxPosts; page++) {
     const url = `${WP_POSTS_URL}?search=${encodeURIComponent("planning tours eau")}&per_page=100&page=${page}&_fields=id,date,title,link,content`;
-    const res = await fetch(url, { headers: { "user-agent": "AquaGwadaBot/1.0 (+contact@aquagwada.fr)" }, signal: AbortSignal.timeout(30_000) });
+    const res = await fetch(url, {
+      headers: { "user-agent": `AquaGwadaBot/1.0 (+mailto:${CONTACT_EMAIL})` },
+      signal: AbortSignal.timeout(30_000),
+    });
     if (!res.ok) break;
     const batch = (await res.json()) as WPPost[];
     if (!Array.isArray(batch) || batch.length === 0) break;
@@ -262,56 +242,64 @@ async function fetchPlanningPosts(opts: { since?: string; maxPosts: number }): P
   return posts;
 }
 
-async function extractItemsFromPost(post: WPPost & { imageUrls: string[] }, communes: CommuneRow[]): Promise<AIPlanningItem[]> {
+function planningAiModels(): string[] {
+  const configured = process.env.PLANNING_AI_MODELS || process.env.PLANNING_AI_MODEL || "";
+  const models = configured.split(",").map((m) => m.trim()).filter(Boolean);
+  if (models.length) return models;
+
+  // Flash keeps the weekly cron affordable; Pro is only a fallback when Flash
+  // fails or returns an unusable empty JSON for a planning image.
+  return ["google/gemini-2.5-flash", "google/gemini-2.5-pro"];
+}
+
+function buildPrompt(post: WPPost, imageUrl: string, communes: CommuneRow[]): string {
+  const title = decodeHtml(post.title.rendered);
+  const zone = detectZoneFromUrl(imageUrl);
+  const validCommunes = communes.map((c) => c.name).join(", ");
+  const zoneHint = zone ? `Zone probable de cette image: ${zone}. Communes attendues possibles: ${(ZONE_TO_COMMUNES[zone] ?? []).join(", ")}.` : "Zone non detectee depuis l'URL.";
+
+  return `Tu lis UNE SEULE image officielle SMGEAG du planning hebdomadaire des tours d'eau en Guadeloupe.
+Article: ${title}
+URL article: ${post.link}
+URL image: ${imageUrl}
+${zoneHint}
+Communes valides: ${validCommunes}.
+
+Objectif: extraire tous les blocs visibles de CETTE image uniquement. Un bloc contient generalement un nom de commune/zone, une liste de quartiers/secteurs, puis une ligne de jours et horaires, par exemple "Lundi / mercredi / vendredi / dimanche de 20h a 7h".
+
+Retourne un JSON STRICT, sans markdown, sous cette forme:
+{"items":[{"commune_name":"Nom exact d'une commune valide","sector":"intitule du bloc ou secteur, sinon null","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","description":"Fermeture HH:MM, ouverture HH:MM"}]}
+
+Regles imperatives:
+- Genere UN item PAR JOUR planifie de la semaine indiquee dans le titre.
+- Si un bloc dit "Tous les jours de Xh a Yh", genere 7 items.
+- Si fermeture 20:00 et ouverture 07:00, garde end="07:00"; le systeme gere le lendemain.
+- Utilise uniquement les noms de "Communes valides".
+- Mappings: CBE/Capesterre B/E = Capesterre-Belle-Eau; Abymes = Les Abymes; Gosier = Le Gosier; Moule = Le Moule; Morne-a-l'Eau = Morne-a-l'Eau; Pointe-a-Pitre = Pointe-a-Pitre; Les Saintes = Terre-de-Haut ET Terre-de-Bas.
+- Si un bloc lie plusieurs communes, cree un item par commune.
+- N'invente jamais de commune, date ou horaire non visible.
+- Ne retourne pas de commentaire, uniquement le JSON.`;
+}
+
+async function callAiForImage(model: string, prompt: string, imageUrl: string): Promise<AIPlanningItem[]> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY missing");
-
-  const title = decodeHtml(post.title.rendered);
-  const communeNames = communes.map((c) => c.name).join(", ");
-  const prompt = `Tu lis l'image officielle SMGEAG du planning hebdomadaire des tours d'eau en Guadeloupe.
-Article: ${title}
-URL: ${post.link}
-Communes valides: ${communeNames}.
-
-IMPORTANT : l'image contient une CARTE de Guadeloupe entourée de PLUSIEURS BLOCS de texte colorés (jaune, bleu, rose, vert, violet, orange, rouge…). Chaque bloc commence par un nom de commune ou de zone EN MAJUSCULES (ex: "LES ABYMES", "CAPESTERRE B/E 1", "SAINTE-ANNE", "LE MOULE"…), suivi d'une liste de quartiers, puis d'une ligne en bleu/rouge précisant les jours et l'horaire (ex: "Lundi / mercredi / vendredi / dimanche de 20h à 7h").
-
-Tu DOIS parcourir SYSTÉMATIQUEMENT TOUS les blocs colorés sans en oublier un seul. Ne te limite pas à 5 ou 6 entrées : un planning typique contient 12 à 18 blocs.
-
-Pour chaque bloc, génère UN item PAR JOUR de la semaine planifiée. Exemple : "Lundi / mercredi / vendredi / dimanche de 20h à 7h" sur la semaine du 20 au 26 avril 2026 = 4 items (20, 22, 24, 26 avril) avec start="20:00" end="07:00".
-
-Retourne un JSON STRICT sous cette forme :
-{"items":[{"commune_name":"Nom exact d'une commune valide","sector":"intitulé du bloc (ex: B/E 1, B/E 4, Bloc 1, ZONE …) ou null","date":"YYYY-MM-DD","start":"HH:MM","end":"HH:MM","description":"Fermeture HH:MM, ouverture HH:MM"}]}
-
-Règles impératives :
-- Utilise uniquement les noms de la liste "Communes valides". Mappings :
-  · CBE / Capesterre B/E (1, 2, 3, 4) = Capesterre-Belle-Eau
-  · Abymes / Pointe-à-Pitre / Abymes = Les Abymes ET Pointe-à-Pitre (deux items)
-  · Gosier = Le Gosier ; Moule = Le Moule ; Goyave = Goyave ; Gourbeyre = Gourbeyre
-  · Saint-Claude / St Claude = Saint-Claude ; Sainte-Rose = Sainte-Rose
-  · Sainte-Anne = Sainte-Anne ; Saint-François = Saint-François
-  · Morne-à-l'Eau (1 et 2) = Morne-à-l'Eau ; Trois-Rivières = Trois-Rivières
-  · Les Saintes = Terre-de-Haut ET Terre-de-Bas (deux items)
-  · Petit-Bourg, Baie-Mahault, Lamentin, Pointe-Noire, Bouillante, Vieux-Habitants, Baillif, Basse-Terre, Vieux-Fort, Anse-Bertrand, Port-Louis, Petit-Canal, La Désirade, Deshaies, Grand-Bourg, Saint-Louis, Capesterre-de-Marie-Galante : si présentes au planning, ajoute-les également.
-- Si un bloc lie plusieurs communes (ex: "Pointe-à-Pitre / Abymes"), crée un item PAR commune.
-- Les dates doivent appartenir à la semaine indiquée dans le titre, au format YYYY-MM-DD.
-- Si l'ouverture est le lendemain (fermeture 20:00 → ouverture 07:00), garde end="07:00" (le système gère le passage à J+1).
-- Si le bloc dit "Tous les jours de Xh à Yh", génère 7 items (un par jour de la semaine du planning).
-- N'invente JAMAIS de communes ou d'horaires non visibles. Mais ne saute pas un bloc visible.`;
-
-  const content = [
-    { type: "text", text: prompt },
-    ...post.imageUrls.slice(0, 4).map((url) => ({ type: "image_url", image_url: { url } })),
-  ];
 
   const res = await fetch(AI_GATEWAY_URL, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      // gemini-2.5-pro = meilleure lecture des images denses multicolores
-      // (planning SMGEAG : ~15 blocs colorés, petites polices). Flash ratait
-      // la moitié des blocs.
-      model: "google/gemini-2.5-pro",
-      messages: [{ role: "user", content }],
+      model,
+      messages: [
+        {
+          role: "user",
+          content: [
+            { type: "text", text: prompt },
+            { type: "image_url", image_url: { url: imageUrl } },
+          ],
+        },
+      ],
+      temperature: 0,
       response_format: { type: "json_object" },
     }),
     signal: AbortSignal.timeout(120_000),
@@ -319,22 +307,88 @@ Règles impératives :
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`AI HTTP ${res.status}: ${text.slice(0, 160)}`);
+    throw new Error(`AI ${model} HTTP ${res.status}: ${text.slice(0, 220)}`);
   }
 
   const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const raw = json.choices?.[0]?.message?.content;
-  if (!raw) return [];
+  if (!raw) throw new Error(`AI ${model} empty response`);
 
   const parsed = JSON.parse(cleanJson(raw)) as { items?: AIPlanningItem[] };
   return Array.isArray(parsed.items) ? parsed.items : [];
 }
 
-async function persistPlanningItems(
-  post: WPPost,
-  items: AIPlanningItem[],
-  communes: CommuneRow[],
-): Promise<PersistStats> {
+async function extractItemsFromImage(post: WPPost, imageUrl: string, communes: CommuneRow[]): Promise<{ items: AIPlanningItem[]; model: string; error: string | null }> {
+  const prompt = buildPrompt(post, imageUrl, communes);
+  let lastError: string | null = null;
+
+  for (const model of planningAiModels()) {
+    try {
+      const items = await callAiForImage(model, prompt, imageUrl);
+      if (items.length > 0) return { items, model, error: null };
+      lastError = `AI ${model} returned 0 item`;
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  return { items: [], model: planningAiModels().join(" -> "), error: lastError ?? "AI extraction failed" };
+}
+
+function dedupeItems(items: AIPlanningItem[]): AIPlanningItem[] {
+  const seen = new Set<string>();
+  const out: AIPlanningItem[] = [];
+  for (const item of items) {
+    const key = `${norm(item.commune_name)}|${norm(item.sector ?? "")}|${item.date}|${normalizeTime(item.start)}|${normalizeTime(item.end)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(item);
+  }
+  return out;
+}
+
+async function extractItemsFromPost(post: WPPost & { imageUrls: string[] }, communes: CommuneRow[]): Promise<ExtractionResult> {
+  const allItems: AIPlanningItem[] = [];
+  const modelsUsed = new Set<string>();
+  const errors: string[] = [];
+  let imagesFailed = 0;
+
+  for (const imageUrl of post.imageUrls) {
+    const result = await extractItemsFromImage(post, imageUrl, communes);
+    modelsUsed.add(result.model);
+    if (result.error) {
+      imagesFailed++;
+      errors.push(`${imageUrl}: ${result.error}`.slice(0, 500));
+      console.warn("[planning] AI extraction failed", post.link, imageUrl, result.error);
+      continue;
+    }
+    allItems.push(...result.items);
+  }
+
+  return {
+    items: dedupeItems(allItems),
+    images: post.imageUrls.length,
+    imagesFailed,
+    modelsUsed: [...modelsUsed],
+    errors,
+  };
+}
+
+async function importedRowsForPost(post: WPPost): Promise<number> {
+  const [outages, history] = await Promise.all([
+    supabaseAdmin.from("outages").select("id", { count: "exact", head: true }).eq("source_url", post.link),
+    supabaseAdmin.from("outage_history").select("id", { count: "exact", head: true }).eq("source_url", post.link),
+  ]);
+
+  return (outages.count ?? 0) + (history.count ?? 0);
+}
+
+function minImportedRows(): number {
+  const raw = Number(process.env.PLANNING_MIN_IMPORTED_ROWS ?? DEFAULT_MIN_IMPORTED_ROWS);
+  return Number.isFinite(raw) && raw >= 1 ? raw : DEFAULT_MIN_IMPORTED_ROWS;
+}
+
+async function persistPlanningItems(post: WPPost, items: AIPlanningItem[], communes: CommuneRow[]): Promise<PersistStats> {
   const stats: PersistStats = {
     items: items.length,
     historyInserted: 0,
@@ -344,12 +398,10 @@ async function persistPlanningItems(
     forecastsUpserted: 0,
     skipped: 0,
     errors: 0,
-    aiFailed: 0,
   };
 
   const nowMs = Date.now();
-  const today = new Date();
-  today.setUTCHours(0, 0, 0, 0);
+  const todayKey = guadeloupeDateKey();
   const title = decodeHtml(post.title.rendered);
 
   for (const item of items) {
@@ -360,8 +412,8 @@ async function persistPlanningItems(
       continue;
     }
 
-    const startsAt = toGuadeloupeDateTime(item.date, startTime);
-    let endsAt = toGuadeloupeDateTime(item.date, endTime);
+    const startsAt = guadeloupeDateTimeToUtc(item.date, startTime);
+    let endsAt = guadeloupeDateTimeToUtc(item.date, endTime);
     if (!startsAt || !endsAt) {
       stats.skipped++;
       continue;
@@ -449,7 +501,7 @@ async function persistPlanningItems(
         else if (existingOutage) stats.outagesUpdated++;
         else stats.outagesInserted++;
 
-        if (startsAt.getTime() >= today.getTime()) {
+        if (item.date >= todayKey) {
           const { error } = await supabaseAdmin.from("forecasts").upsert({
             commune_id: communeId,
             forecast_date: item.date,
@@ -482,17 +534,26 @@ function mergeStats(target: PersistStats, source: PersistStats) {
   target.forecastsUpserted += source.forecastsUpserted;
   target.skipped += source.skipped;
   target.errors += source.errors;
-  target.aiFailed += source.aiFailed;
+}
+
+function writeCount(stats: PersistStats): number {
+  return stats.historyInserted + stats.historyUpdated + stats.outagesInserted + stats.outagesUpdated + stats.forecastsUpserted;
+}
+
+function summarizeNotes(parts: string[]): string {
+  return parts.join(" | ").slice(0, 1800);
 }
 
 export async function scrapePlanning(): Promise<{
   ok: boolean;
   posts: number;
   images: number;
+  images_failed: number;
   forecasts_extracted: number;
   inserted: number;
   updated: number;
   skipped: number;
+  skipped_imported_posts: number;
   errors: number;
 }> {
   const startedAt = new Date();
@@ -500,47 +561,68 @@ export async function scrapePlanning(): Promise<{
   if (cErr) throw cErr;
   const list = (communes ?? []) as CommuneRow[];
 
-  const posts = await fetchPlanningPosts({ maxPosts: 3 });
-  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0 };
+  const maxPosts = Math.min(3, Math.max(1, Number(process.env.PLANNING_MAX_POSTS ?? 1)));
+  const posts = await fetchPlanningPosts({ maxPosts });
+  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0 };
+  const noteParts: string[] = [];
   let images = 0;
+  let imagesFailed = 0;
+  let skippedImportedPosts = 0;
 
   for (const post of posts) {
-    images += post.imageUrls.length;
-    let items: AIPlanningItem[] = [];
-    let aiFailed = false;
-    try {
-      items = await extractItemsFromPost(post, list);
-    } catch (e) {
-      aiFailed = true;
-      console.warn("[planning] AI extraction failed", post.link, e);
+    const alreadyImported = await importedRowsForPost(post);
+    const force = process.env.PLANNING_FORCE_REPROCESS === "true";
+    if (!force && alreadyImported >= minImportedRows()) {
+      skippedImportedPosts++;
+      noteParts.push(`skip ${post.id}: alreadyImported=${alreadyImported}`);
+      continue;
     }
+
+    const extracted = await extractItemsFromPost(post, list);
+    images += extracted.images;
+    imagesFailed += extracted.imagesFailed;
+    if (extracted.errors.length) noteParts.push(`post ${post.id} aiErrors=${extracted.errors.slice(0, 2).join(" ; ")}`);
+    noteParts.push(`post ${post.id} images=${extracted.images} failed=${extracted.imagesFailed} models=${extracted.modelsUsed.join(",")} items=${extracted.items.length}`);
+
     try {
-      const stats = await persistPlanningItems(post, items, list);
-      if (aiFailed) stats.aiFailed++;
-      // Si l'IA a échoué ou n'a rien produit, on n'écrit RIEN.
-      // Mieux vaut un trou (loggé dans scraper_runs) qu'une donnée fausse.
+      const stats = await persistPlanningItems(post, extracted.items, list);
       mergeStats(totals, stats);
     } catch (e) {
       totals.errors++;
+      noteParts.push(`post ${post.id} persist=${e instanceof Error ? e.message : String(e)}`);
       console.warn("[planning] post persist failed", post.link, e);
     }
   }
 
   const inserted = totals.historyInserted + totals.outagesInserted + totals.forecastsUpserted;
   const updated = totals.historyUpdated + totals.outagesUpdated;
+  const wrote = writeCount(totals);
+  const ok = totals.errors === 0 && (wrote > 0 || skippedImportedPosts > 0) && imagesFailed < Math.max(1, images);
+
   await supabaseAdmin.from("scraper_runs").insert({
     source: "smgeag-planning",
     url: posts.map((p) => p.link).join(","),
     started_at: startedAt.toISOString(),
     finished_at: new Date().toISOString(),
-    ok: totals.errors === 0 && (totals.outagesInserted + totals.outagesUpdated + totals.historyInserted + totals.historyUpdated + totals.forecastsUpserted) > 0,
+    ok,
     items_found: totals.items,
     items_inserted: inserted,
     items_updated: updated,
-    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed}`,
+    notes: summarizeNotes([
+      `posts=${posts.length}`,
+      `images=${images}`,
+      `imagesFailed=${imagesFailed}`,
+      `history=${totals.historyInserted}/${totals.historyUpdated}`,
+      `outages=${totals.outagesInserted}/${totals.outagesUpdated}`,
+      `forecasts=${totals.forecastsUpserted}`,
+      `skipped=${totals.skipped}`,
+      `skippedImportedPosts=${skippedImportedPosts}`,
+      `errors=${totals.errors}`,
+      ...noteParts,
+    ]),
   });
 
-  return { ok: totals.errors === 0, posts: posts.length, images, forecasts_extracted: totals.items, inserted, updated, skipped: totals.skipped, errors: totals.errors };
+  return { ok, posts: posts.length, images, images_failed: imagesFailed, forecasts_extracted: totals.items, inserted, updated, skipped: totals.skipped, skipped_imported_posts: skippedImportedPosts, errors: totals.errors };
 }
 
 export async function backfillPlanningHistory(opts: { since?: string; maxPosts?: number } = {}): Promise<{
@@ -548,6 +630,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
   since: string;
   posts: number;
   images: number;
+  images_failed: number;
   items_extracted: number;
   history_inserted: number;
   history_updated: number;
@@ -555,6 +638,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
   outages_updated: number;
   forecasts_upserted: number;
   skipped: number;
+  skipped_imported_posts: number;
   errors: number;
 }> {
   const since = opts.since ?? DEFAULT_BACKFILL_SINCE;
@@ -565,47 +649,69 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
   const list = (communes ?? []) as CommuneRow[];
 
   const posts = await fetchPlanningPosts({ since, maxPosts });
-  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0, aiFailed: 0 };
+  const totals: PersistStats = { items: 0, historyInserted: 0, historyUpdated: 0, outagesInserted: 0, outagesUpdated: 0, forecastsUpserted: 0, skipped: 0, errors: 0 };
+  const noteParts: string[] = [];
   let images = 0;
+  let imagesFailed = 0;
+  let skippedImportedPosts = 0;
 
   for (const post of posts) {
-    images += post.imageUrls.length;
-    let items: AIPlanningItem[] = [];
-    let aiFailed = false;
-    try {
-      items = await extractItemsFromPost(post, list);
-    } catch (e) {
-      aiFailed = true;
-      console.warn("[planning-backfill] AI extraction failed", post.link, e);
+    const alreadyImported = await importedRowsForPost(post);
+    const force = process.env.PLANNING_FORCE_REPROCESS === "true";
+    if (!force && alreadyImported >= minImportedRows()) {
+      skippedImportedPosts++;
+      continue;
     }
+
+    const extracted = await extractItemsFromPost(post, list);
+    images += extracted.images;
+    imagesFailed += extracted.imagesFailed;
+    if (extracted.errors.length) noteParts.push(`post ${post.id} aiErrors=${extracted.errors.slice(0, 2).join(" ; ")}`);
+
     try {
-      const stats = await persistPlanningItems(post, items, list);
-      if (aiFailed) stats.aiFailed++;
-      // Si l'IA a échoué, on saute ce post sans rien écrire.
+      const stats = await persistPlanningItems(post, extracted.items, list);
       mergeStats(totals, stats);
     } catch (e) {
       totals.errors++;
+      noteParts.push(`post ${post.id} persist=${e instanceof Error ? e.message : String(e)}`);
       console.warn("[planning-backfill] post persist failed", post.link, e);
     }
   }
+
+  const inserted = totals.historyInserted + totals.outagesInserted + totals.forecastsUpserted;
+  const updated = totals.historyUpdated + totals.outagesUpdated;
+  const wrote = writeCount(totals);
+  const ok = totals.errors === 0 && (wrote > 0 || skippedImportedPosts > 0) && imagesFailed < Math.max(1, images);
 
   await supabaseAdmin.from("scraper_runs").insert({
     source: "smgeag-planning-backfill",
     url: `wp-json since=${since}`,
     started_at: startedAt.toISOString(),
     finished_at: new Date().toISOString(),
-    ok: totals.errors === 0 && (totals.outagesInserted + totals.outagesUpdated + totals.historyInserted + totals.historyUpdated + totals.forecastsUpserted) > 0,
+    ok,
     items_found: totals.items,
-    items_inserted: totals.historyInserted + totals.outagesInserted + totals.forecastsUpserted,
-    items_updated: totals.historyUpdated + totals.outagesUpdated,
-    notes: `posts=${posts.length} images=${images} history=${totals.historyInserted}/${totals.historyUpdated} outages=${totals.outagesInserted}/${totals.outagesUpdated} forecasts=${totals.forecastsUpserted} skipped=${totals.skipped} errors=${totals.errors} aiFailed=${totals.aiFailed}`,
+    items_inserted: inserted,
+    items_updated: updated,
+    notes: summarizeNotes([
+      `posts=${posts.length}`,
+      `images=${images}`,
+      `imagesFailed=${imagesFailed}`,
+      `history=${totals.historyInserted}/${totals.historyUpdated}`,
+      `outages=${totals.outagesInserted}/${totals.outagesUpdated}`,
+      `forecasts=${totals.forecastsUpserted}`,
+      `skipped=${totals.skipped}`,
+      `skippedImportedPosts=${skippedImportedPosts}`,
+      `errors=${totals.errors}`,
+      ...noteParts,
+    ]),
   });
 
   return {
-    ok: totals.errors === 0,
+    ok,
     since,
     posts: posts.length,
     images,
+    images_failed: imagesFailed,
     items_extracted: totals.items,
     history_inserted: totals.historyInserted,
     history_updated: totals.historyUpdated,
@@ -613,6 +719,7 @@ export async function backfillPlanningHistory(opts: { since?: string; maxPosts?:
     outages_updated: totals.outagesUpdated,
     forecasts_upserted: totals.forecastsUpserted,
     skipped: totals.skipped,
+    skipped_imported_posts: skippedImportedPosts,
     errors: totals.errors,
   };
 }
