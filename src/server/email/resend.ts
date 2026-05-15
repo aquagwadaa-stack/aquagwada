@@ -1,4 +1,5 @@
 import { CONTACT_EMAIL } from "@/lib/contact";
+import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 type EmailPayload = {
   to: string;
@@ -14,8 +15,10 @@ export type EmailResult = {
   error?: string;
 };
 
-const RESEND_ENDPOINT = "https://api.resend.com/emails";
-const DEFAULT_FROM = "AquaGwada <notifications@aquagwada.fr>";
+const SITE_NAME = "AquaGwada";
+const SENDER_DOMAIN = "notify.aquagwada.fr";
+const FROM_DOMAIN = "notify.aquagwada.fr";
+const DEFAULT_FROM = `${SITE_NAME} <noreply@${FROM_DOMAIN}>`;
 
 function escapeHtml(value: string) {
   return value
@@ -44,48 +47,53 @@ function appUrl(path = "/ma-commune") {
   return `${origin.replace(/\/$/, "")}${path}`;
 }
 
-function resendErrorMessage(data: unknown, status: number) {
-  if (data && typeof data === "object") {
-    const obj = data as Record<string, unknown>;
-    if (typeof obj.message === "string") return obj.message;
-    if (typeof obj.error === "string") return obj.error;
-    if (obj.error && typeof obj.error === "object" && typeof (obj.error as Record<string, unknown>).message === "string") {
-      return String((obj.error as Record<string, unknown>).message);
-    }
-  }
-  return `Resend HTTP ${status}`;
-}
-
 export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) {
-    return { ok: false, skipped: true, error: "RESEND_API_KEY missing" };
-  }
-
   const from = process.env.EMAIL_FROM || DEFAULT_FROM;
   const replyTo = process.env.EMAIL_REPLY_TO || CONTACT_EMAIL;
-  const response = await fetch(RESEND_ENDPOINT, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
-      to: payload.to,
-      subject: payload.subject,
-      html: payload.html,
-      text: payload.text,
-      reply_to: replyTo,
-    }),
-  });
+  const messageId = crypto.randomUUID();
+  const admin = supabaseAdmin as any;
 
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    return { ok: false, error: resendErrorMessage(data, response.status) };
+  try {
+    await admin.from("email_send_log").insert({
+      message_id: messageId,
+      template_name: "app",
+      recipient_email: payload.to,
+      status: "pending",
+    });
+
+    const { error } = await admin.rpc("enqueue_email", {
+      queue_name: "transactional_emails",
+      payload: {
+        message_id: messageId,
+        to: payload.to,
+        from,
+        reply_to: replyTo,
+        sender_domain: SENDER_DOMAIN,
+        subject: payload.subject,
+        html: payload.html,
+        text: payload.text,
+        purpose: "transactional",
+        label: "app",
+        idempotency_key: messageId,
+        queued_at: new Date().toISOString(),
+      },
+    });
+
+    if (error) {
+      await admin.from("email_send_log").insert({
+        message_id: messageId,
+        template_name: "app",
+        recipient_email: payload.to,
+        status: "failed",
+        error_message: error.message,
+      });
+      return { ok: false, error: error.message };
+    }
+
+    return { ok: true, id: messageId };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
-
-  return { ok: true, id: typeof data?.id === "string" ? data.id : undefined };
 }
 
 export function outageEmail(title: string, body: string) {
