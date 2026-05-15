@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as MaCommuneRouteImport } from './routes/ma-commune'
 import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as ConfidentialiteRouteImport } from './routes/confidentialite'
@@ -18,9 +19,14 @@ import { Route as AdminRouteImport } from './routes/admin'
 import { Route as AbonnementsRouteImport } from './routes/abonnements'
 import { Route as AProposRouteImport } from './routes/a-propos'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as EmailUnsubscribeRouteImport } from './routes/email/unsubscribe'
 import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
+import { Route as LovableEmailSuppressionRouteImport } from './routes/lovable/email/suppression'
 import { Route as ApiNotificationsTestPushRouteImport } from './routes/api.notifications.test-push'
 import { Route as ApiNotificationsTestEmailRouteImport } from './routes/api.notifications.test-email'
+import { Route as LovableEmailTransactionalSendRouteImport } from './routes/lovable/email/transactional/send'
+import { Route as LovableEmailTransactionalPreviewRouteImport } from './routes/lovable/email/transactional/preview'
+import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api.public.payments.webhook'
 import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
 import { Route as ApiPublicJobsSendTrialEmailsRouteImport } from './routes/api.public.jobs.send-trial-emails'
@@ -35,6 +41,11 @@ import { Route as ApiPublicJobsCleanupHistoryRouteImport } from './routes/api.pu
 import { Route as ApiPublicJobsCheckPreventiveRouteImport } from './routes/api.public.jobs.check-preventive'
 import { Route as ApiPublicJobsBackfillPlanningRouteImport } from './routes/api.public.jobs.backfill-planning'
 
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MaCommuneRoute = MaCommuneRouteImport.update({
   id: '/ma-commune',
   path: '/ma-commune',
@@ -80,9 +91,19 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EmailUnsubscribeRoute = EmailUnsubscribeRouteImport.update({
+  id: '/email/unsubscribe',
+  path: '/email/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CheckoutReturnRoute = CheckoutReturnRouteImport.update({
   id: '/checkout/return',
   path: '/checkout/return',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LovableEmailSuppressionRoute = LovableEmailSuppressionRouteImport.update({
+  id: '/lovable/email/suppression',
+  path: '/lovable/email/suppression',
   getParentRoute: () => rootRouteImport,
 } as any)
 const ApiNotificationsTestPushRoute =
@@ -95,6 +116,24 @@ const ApiNotificationsTestEmailRoute =
   ApiNotificationsTestEmailRouteImport.update({
     id: '/api/notifications/test-email',
     path: '/api/notifications/test-email',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const LovableEmailTransactionalSendRoute =
+  LovableEmailTransactionalSendRouteImport.update({
+    id: '/lovable/email/transactional/send',
+    path: '/lovable/email/transactional/send',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const LovableEmailTransactionalPreviewRoute =
+  LovableEmailTransactionalPreviewRouteImport.update({
+    id: '/lovable/email/transactional/preview',
+    path: '/lovable/email/transactional/preview',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const LovableEmailQueueProcessRoute =
+  LovableEmailQueueProcessRouteImport.update({
+    id: '/lovable/email/queue/process',
+    path: '/lovable/email/queue/process',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicPaymentsWebhookRoute =
@@ -185,9 +224,12 @@ export interface FileRoutesByFullPath {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/checkout/return': typeof CheckoutReturnRoute
+  '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
   '/api/notifications/test-push': typeof ApiNotificationsTestPushRoute
+  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -201,6 +243,9 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
+  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
+  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -212,9 +257,12 @@ export interface FileRoutesByTo {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/checkout/return': typeof CheckoutReturnRoute
+  '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
   '/api/notifications/test-push': typeof ApiNotificationsTestPushRoute
+  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -228,6 +276,9 @@ export interface FileRoutesByTo {
   '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
+  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
+  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -240,9 +291,12 @@ export interface FileRoutesById {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/checkout/return': typeof CheckoutReturnRoute
+  '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
   '/api/notifications/test-push': typeof ApiNotificationsTestPushRoute
+  '/lovable/email/suppression': typeof LovableEmailSuppressionRoute
   '/api/public/jobs/backfill-planning': typeof ApiPublicJobsBackfillPlanningRoute
   '/api/public/jobs/check-preventive': typeof ApiPublicJobsCheckPreventiveRoute
   '/api/public/jobs/cleanup-history': typeof ApiPublicJobsCleanupHistoryRoute
@@ -256,6 +310,9 @@ export interface FileRoutesById {
   '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
+  '/lovable/email/transactional/preview': typeof LovableEmailTransactionalPreviewRoute
+  '/lovable/email/transactional/send': typeof LovableEmailTransactionalSendRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -269,9 +326,12 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/unsubscribe'
     | '/checkout/return'
+    | '/email/unsubscribe'
     | '/api/notifications/test-email'
     | '/api/notifications/test-push'
+    | '/lovable/email/suppression'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -285,6 +345,9 @@ export interface FileRouteTypes {
     | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
+    | '/lovable/email/queue/process'
+    | '/lovable/email/transactional/preview'
+    | '/lovable/email/transactional/send'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -296,9 +359,12 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/unsubscribe'
     | '/checkout/return'
+    | '/email/unsubscribe'
     | '/api/notifications/test-email'
     | '/api/notifications/test-push'
+    | '/lovable/email/suppression'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -312,6 +378,9 @@ export interface FileRouteTypes {
     | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
+    | '/lovable/email/queue/process'
+    | '/lovable/email/transactional/preview'
+    | '/lovable/email/transactional/send'
   id:
     | '__root__'
     | '/'
@@ -323,9 +392,12 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/unsubscribe'
     | '/checkout/return'
+    | '/email/unsubscribe'
     | '/api/notifications/test-email'
     | '/api/notifications/test-push'
+    | '/lovable/email/suppression'
     | '/api/public/jobs/backfill-planning'
     | '/api/public/jobs/check-preventive'
     | '/api/public/jobs/cleanup-history'
@@ -339,6 +411,9 @@ export interface FileRouteTypes {
     | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
+    | '/lovable/email/queue/process'
+    | '/lovable/email/transactional/preview'
+    | '/lovable/email/transactional/send'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -351,9 +426,12 @@ export interface RootRouteChildren {
   ConfidentialiteRoute: typeof ConfidentialiteRoute
   ConnexionRoute: typeof ConnexionRoute
   MaCommuneRoute: typeof MaCommuneRoute
+  UnsubscribeRoute: typeof UnsubscribeRoute
   CheckoutReturnRoute: typeof CheckoutReturnRoute
+  EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   ApiNotificationsTestEmailRoute: typeof ApiNotificationsTestEmailRoute
   ApiNotificationsTestPushRoute: typeof ApiNotificationsTestPushRoute
+  LovableEmailSuppressionRoute: typeof LovableEmailSuppressionRoute
   ApiPublicJobsBackfillPlanningRoute: typeof ApiPublicJobsBackfillPlanningRoute
   ApiPublicJobsCheckPreventiveRoute: typeof ApiPublicJobsCheckPreventiveRoute
   ApiPublicJobsCleanupHistoryRoute: typeof ApiPublicJobsCleanupHistoryRoute
@@ -367,10 +445,20 @@ export interface RootRouteChildren {
   ApiPublicJobsSendTrialEmailsRoute: typeof ApiPublicJobsSendTrialEmailsRoute
   ApiPublicOutagesIngestRoute: typeof ApiPublicOutagesIngestRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
+  LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
+  LovableEmailTransactionalPreviewRoute: typeof LovableEmailTransactionalPreviewRoute
+  LovableEmailTransactionalSendRoute: typeof LovableEmailTransactionalSendRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ma-commune': {
       id: '/ma-commune'
       path: '/ma-commune'
@@ -434,11 +522,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/email/unsubscribe': {
+      id: '/email/unsubscribe'
+      path: '/email/unsubscribe'
+      fullPath: '/email/unsubscribe'
+      preLoaderRoute: typeof EmailUnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/checkout/return': {
       id: '/checkout/return'
       path: '/checkout/return'
       fullPath: '/checkout/return'
       preLoaderRoute: typeof CheckoutReturnRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lovable/email/suppression': {
+      id: '/lovable/email/suppression'
+      path: '/lovable/email/suppression'
+      fullPath: '/lovable/email/suppression'
+      preLoaderRoute: typeof LovableEmailSuppressionRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/notifications/test-push': {
@@ -453,6 +555,27 @@ declare module '@tanstack/react-router' {
       path: '/api/notifications/test-email'
       fullPath: '/api/notifications/test-email'
       preLoaderRoute: typeof ApiNotificationsTestEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lovable/email/transactional/send': {
+      id: '/lovable/email/transactional/send'
+      path: '/lovable/email/transactional/send'
+      fullPath: '/lovable/email/transactional/send'
+      preLoaderRoute: typeof LovableEmailTransactionalSendRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lovable/email/transactional/preview': {
+      id: '/lovable/email/transactional/preview'
+      path: '/lovable/email/transactional/preview'
+      fullPath: '/lovable/email/transactional/preview'
+      preLoaderRoute: typeof LovableEmailTransactionalPreviewRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lovable/email/queue/process': {
+      id: '/lovable/email/queue/process'
+      path: '/lovable/email/queue/process'
+      fullPath: '/lovable/email/queue/process'
+      preLoaderRoute: typeof LovableEmailQueueProcessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/payments/webhook': {
@@ -559,9 +682,12 @@ const rootRouteChildren: RootRouteChildren = {
   ConfidentialiteRoute: ConfidentialiteRoute,
   ConnexionRoute: ConnexionRoute,
   MaCommuneRoute: MaCommuneRoute,
+  UnsubscribeRoute: UnsubscribeRoute,
   CheckoutReturnRoute: CheckoutReturnRoute,
+  EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   ApiNotificationsTestEmailRoute: ApiNotificationsTestEmailRoute,
   ApiNotificationsTestPushRoute: ApiNotificationsTestPushRoute,
+  LovableEmailSuppressionRoute: LovableEmailSuppressionRoute,
   ApiPublicJobsBackfillPlanningRoute: ApiPublicJobsBackfillPlanningRoute,
   ApiPublicJobsCheckPreventiveRoute: ApiPublicJobsCheckPreventiveRoute,
   ApiPublicJobsCleanupHistoryRoute: ApiPublicJobsCleanupHistoryRoute,
@@ -576,16 +702,10 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicJobsSendTrialEmailsRoute: ApiPublicJobsSendTrialEmailsRoute,
   ApiPublicOutagesIngestRoute: ApiPublicOutagesIngestRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
+  LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
+  LovableEmailTransactionalPreviewRoute: LovableEmailTransactionalPreviewRoute,
+  LovableEmailTransactionalSendRoute: LovableEmailTransactionalSendRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
