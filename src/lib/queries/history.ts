@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
+const BOGUS_SMGEAG_HOMEPAGE_URL = "https://www.smgeag.fr/";
+
 export type HistoryEntry = {
   id: string;
   commune_id: string;
@@ -14,6 +16,10 @@ export type HistoryEntry = {
   sector: string | null;
   commune?: { name: string; slug: string } | null;
 };
+
+function isTrustedHistorySource(entry: Pick<HistoryEntry, "source_url">): boolean {
+  return entry.source_url !== BOGUS_SMGEAG_HOMEPAGE_URL;
+}
 
 async function scopeToCurrentUserCommunes(communeIds?: string[]): Promise<string[] | undefined> {
   const requested = Array.from(new Set((communeIds ?? []).filter(Boolean)));
@@ -58,7 +64,8 @@ export async function fetchHistory(opts: {
   if (scopedCommuneIds && scopedCommuneIds.length) q = q.in("commune_id", scopedCommuneIds);
   const { data, error, count } = await q;
   if (error) throw error;
-  return { rows: (data ?? []) as unknown as HistoryEntry[], total: count ?? 0 };
+  const rows = ((data ?? []) as unknown as HistoryEntry[]).filter(isTrustedHistorySource);
+  return { rows, total: count ?? rows.length };
 }
 
 /** History inside a precise window, used by multi-commune timelines. */
@@ -73,5 +80,5 @@ export async function fetchHistoryRange(fromIso: string, toIso: string, communeI
   if (communeIds && communeIds.length) q = q.in("commune_id", communeIds);
   const { data, error } = await q;
   if (error) throw error;
-  return (data ?? []) as unknown as HistoryEntry[];
+  return ((data ?? []) as unknown as HistoryEntry[]).filter(isTrustedHistorySource);
 }
