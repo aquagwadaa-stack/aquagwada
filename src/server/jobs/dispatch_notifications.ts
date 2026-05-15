@@ -6,6 +6,8 @@ import { formatGuadeloupeDateTime, formatGuadeloupeTime, minutesInGuadeloupeDay 
 type NotificationKind = "outage_start" | "water_back" | "preventive" | "preventive_water_back";
 type NotificationChannel = "push" | "email";
 
+const BOGUS_SMGEAG_HOMEPAGE_URL = "https://www.smgeag.fr/";
+
 type Pref = {
   user_id: string;
   email_enabled: boolean;
@@ -28,6 +30,7 @@ type Outage = {
   starts_at: string;
   ends_at: string | null;
   status: string;
+  source_url: string | null;
 };
 
 type ExistingNotificationLog = {
@@ -49,6 +52,10 @@ function inQuietHours(start: string | null, end: string | null, now: Date): bool
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
+}
+
+function isTrustedOutageSource(outage: Outage) {
+  return outage.source_url !== BOGUS_SMGEAG_HOMEPAGE_URL;
 }
 
 async function getUserEmail(userId: string) {
@@ -144,7 +151,7 @@ export async function dispatchNotifications(): Promise<{
 
   const { data: started } = await supabaseAdmin
     .from("outages")
-    .select("id, commune_id, starts_at, ends_at, status")
+    .select("id, commune_id, starts_at, ends_at, status, source_url")
     .gte("starts_at", startLookbackIso)
     .lte("starts_at", now.toISOString())
     .neq("status", "cancelled")
@@ -152,7 +159,7 @@ export async function dispatchNotifications(): Promise<{
 
   const { data: ended } = await supabaseAdmin
     .from("outages")
-    .select("id, commune_id, starts_at, ends_at, status")
+    .select("id, commune_id, starts_at, ends_at, status, source_url")
     .gte("ends_at", endLookbackIso)
     .lte("ends_at", now.toISOString())
     .neq("status", "cancelled");
@@ -160,7 +167,7 @@ export async function dispatchNotifications(): Promise<{
   const futureMaxIso = new Date(now.getTime() + 48 * 3600_000).toISOString();
   const { data: scheduled } = await supabaseAdmin
     .from("outages")
-    .select("id, commune_id, starts_at, ends_at, status")
+    .select("id, commune_id, starts_at, ends_at, status, source_url")
     .gte("starts_at", now.toISOString())
     .lte("starts_at", futureMaxIso)
     .neq("status", "cancelled")
@@ -169,7 +176,7 @@ export async function dispatchNotifications(): Promise<{
   const wbMaxIso = new Date(now.getTime() + 6 * 3600_000).toISOString();
   const { data: aboutToEnd } = await supabaseAdmin
     .from("outages")
-    .select("id, commune_id, starts_at, ends_at, status")
+    .select("id, commune_id, starts_at, ends_at, status, source_url")
     .lte("starts_at", now.toISOString())
     .gte("ends_at", now.toISOString())
     .lte("ends_at", wbMaxIso)
@@ -285,10 +292,10 @@ export async function dispatchNotifications(): Promise<{
     }
   }
 
-  await processGroup((started ?? []) as Outage[], "outage_start");
-  await processGroup((ended ?? []) as Outage[], "water_back");
-  await processGroup((scheduled ?? []) as Outage[], "preventive");
-  await processGroup((aboutToEnd ?? []) as Outage[], "preventive_water_back");
+  await processGroup(((started ?? []) as Outage[]).filter(isTrustedOutageSource), "outage_start");
+  await processGroup(((ended ?? []) as Outage[]).filter(isTrustedOutageSource), "water_back");
+  await processGroup(((scheduled ?? []) as Outage[]).filter(isTrustedOutageSource), "preventive");
+  await processGroup(((aboutToEnd ?? []) as Outage[]).filter(isTrustedOutageSource), "preventive_water_back");
 
   return { ok: true, candidates, logged, skipped };
 }
