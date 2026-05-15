@@ -25,14 +25,12 @@ on:
           - scrape-ai-history
           - generate-forecasts
   schedule:
-    - cron: "7,37 * * * *"
-    - cron: "3,13,23,33,43,53 * * * *"
-    - cron: "17 0,6,12,18 * * *"
-    - cron: "11 * * * *"
-    - cron: "29 3 * * *"
-    - cron: "19 6,12,18 * * *"
-    - cron: "31 2 * * *"
-    - cron: "41 4 * * 0"
+    # Cheap/non-AI jobs only. Image/AI planning imports stay manual while credits are constrained.
+    - cron: "7,37 * * * *"              # SMGEAG text/web scrape, every 30 min
+    - cron: "3,13,23,33,43,53 * * * *" # reports + notifications, every 10 min
+    - cron: "17 * * * *"                # statistical forecasts, hourly
+    - cron: "11 * * * *"                # preventive notification catch-up, hourly
+    - cron: "29 3 * * *"                # cleanup, daily
 
 permissions:
   contents: read
@@ -124,7 +122,6 @@ jobs:
 
   scrape-planning:
     if: >-
-      github.event_name == 'schedule' && github.event.schedule == '19 6,12,18 * * *' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'scrape-planning')
     runs-on: ubuntu-latest
     steps:
@@ -139,7 +136,6 @@ jobs:
 
   backfill-planning:
     if: >-
-      github.event_name == 'schedule' && github.event.schedule == '31 2 * * *' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'backfill-planning')
     runs-on: ubuntu-latest
     steps:
@@ -154,7 +150,6 @@ jobs:
 
   scrape-ai-history:
     if: >-
-      github.event_name == 'schedule' && github.event.schedule == '41 4 * * 0' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'scrape-ai-history')
     runs-on: ubuntu-latest
     steps:
@@ -169,7 +164,7 @@ jobs:
 
   generate-forecasts:
     if: >-
-      github.event_name == 'schedule' && github.event.schedule == '17 0,6,12,18 * * *' ||
+      github.event_name == 'schedule' && github.event.schedule == '17 * * * *' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'generate-forecasts')
     runs-on: ubuntu-latest
     steps:
