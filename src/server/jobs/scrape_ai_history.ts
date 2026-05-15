@@ -24,6 +24,9 @@ const SEARCH_QUERIES = [
   "site:franceantilles.fr coupure eau Guadeloupe",
   "site:rci.fm coupure eau Guadeloupe",
   "site:karibinfo.com eau Guadeloupe",
+  "site:facebook.com SMGEAG coupure eau Guadeloupe",
+  "site:facebook.com Guadeloupe coupure eau",
+  "site:facebook.com Guadeloupe tour d'eau",
 ];
 
 type CommuneRow = { id: string; name: string; slug: string };
@@ -48,6 +51,29 @@ function hashId(input: string): string {
   let h = 0;
   for (let i = 0; i < input.length; i++) { h = ((h << 5) - h + input.charCodeAt(i)) | 0; }
   return `aih_${(h >>> 0).toString(36)}`;
+}
+
+function numberFromEnv(name: string, fallback: number, min = 1, max = 100): number {
+  const value = Number(process.env[name]);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function aiHistoryQueries(): string[] {
+  const extra = (process.env.AI_HISTORY_EXTRA_QUERIES ?? "")
+    .split("\n")
+    .flatMap((line) => line.split("|"))
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return Array.from(new Set([...SEARCH_QUERIES, ...extra]));
+}
+
+async function sourceAlreadyImported(url: string): Promise<boolean> {
+  const [history, outages] = await Promise.all([
+    supabaseAdmin.from("outage_history").select("id", { count: "exact", head: true }).eq("source_url", url),
+    supabaseAdmin.from("outages").select("id", { count: "exact", head: true }).eq("source_url", url),
+  ]);
+  return ((history.count ?? 0) + (outages.count ?? 0)) > 0;
 }
 
 async function firecrawlSearch(query: string, limit = 10): Promise<Array<{ url: string; title?: string; description?: string; markdown?: string }>> {
@@ -149,29 +175,38 @@ function findCommuneIdsInText(text: string, communes: CommuneRow[]): string[] {
     .map((c) => c.id);
 }
 
-export async function scrapeAIHistory(): Promise<{ ok: boolean; pages_scanned: number; outages_extracted: number; inserted: number; skipped: number; errors: number }> {
+export async function scrapeAIHistory(): Promise<{ ok: boolean; pages_scanned: number; outages_extracted: number; inserted: number; skipped: number; skipped_existing: number; errors: number }> {
   const startedAt = new Date();
   const { data: communes, error: cErr } = await supabaseAdmin.from("communes").select("id, name, slug");
   if (cErr) throw cErr;
   const list = (communes ?? []) as CommuneRow[];
   const communeNames = list.map((c) => c.name);
+  const maxPages = numberFromEnv("AI_HISTORY_MAX_PAGES_PER_RUN", 18, 1, 80);
+  const searchLimit = numberFromEnv("AI_HISTORY_SEARCH_LIMIT_PER_QUERY", 5, 1, 20);
 
   let pagesScanned = 0;
   let outagesExtracted = 0;
   let inserted = 0;
   let skipped = 0;
+  let skippedExisting = 0;
   let errors = 0;
 
   const seenUrls = new Set<string>();
 
-  for (const query of SEARCH_QUERIES) {
+  for (const query of aiHistoryQueries()) {
+    if (pagesScanned >= maxPages) break;
     let results: Array<{ url: string; title?: string; description?: string; markdown?: string }> = [];
-    try { results = await firecrawlSearch(query, 8); }
+    try { results = await firecrawlSearch(query, searchLimit); }
     catch (e) { errors++; console.warn(`[ai-history] search error`, e); continue; }
 
     for (const r of results) {
+      if (pagesScanned >= maxPages) break;
       if (!r.url || seenUrls.has(r.url)) continue;
       seenUrls.add(r.url);
+      if (await sourceAlreadyImported(r.url)) {
+        skippedExisting++;
+        continue;
+      }
       const md = r.markdown ?? "";
       if (md.length < 200) { skipped++; continue; }
 
@@ -238,8 +273,8 @@ export async function scrapeAIHistory(): Promise<{ ok: boolean; pages_scanned: n
     items_found: outagesExtracted,
     items_inserted: inserted,
     items_updated: 0,
-    notes: `pages=${pagesScanned} skipped=${skipped} errors=${errors}`,
+    notes: `pages=${pagesScanned} skipped=${skipped} skippedExisting=${skippedExisting} maxPages=${maxPages} searchLimit=${searchLimit} errors=${errors}`,
   });
 
-  return { ok: errors === 0, pages_scanned: pagesScanned, outages_extracted: outagesExtracted, inserted, skipped, errors };
+  return { ok: errors === 0, pages_scanned: pagesScanned, outages_extracted: outagesExtracted, inserted, skipped, skipped_existing: skippedExisting, errors };
 }
