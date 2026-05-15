@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { Bell, Mail, Lock, Clock, History, Droplet, DropletOff, Smartphone, CheckCircle2, AlertTriangle, Save, Sparkles, Send, Loader2 } from "lucide-react";
@@ -8,7 +8,7 @@ import { useAuth } from "@/providers/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { PLAN_CAPS, type Tier } from "@/lib/subscription";
 import { InstallAndPushDialog } from "@/components/notifications/InstallAndPushDialog";
-import { getActivePushSubscription, getNotificationPermission, isPreviewContext, isPushSupported } from "@/lib/push-notifications";
+import { getActivePushSubscription, getNotificationPermission, isPreviewContext, isPushSupported, subscribeToPush } from "@/lib/push-notifications";
 
 type Prefs = {
   push_enabled: boolean;
@@ -71,16 +71,20 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   const [draft, setDraft] = useState<Prefs>(DEFAULT_PREFS);
   const [saving, setSaving] = useState(false);
   const [testingPush, setTestingPush] = useState(false);
+  const [activatingPush, setActivatingPush] = useState(false);
 
-  useEffect(() => {
+  const refreshPushStatus = useCallback(async () => {
     setInstalled(isStandalone());
     if (isPushSupported() && !isPreviewContext()) {
-      getActivePushSubscription().then(async (sub) => {
-        setPushSubscribed(!!sub);
-        setPushPermission(await getNotificationPermission());
-      });
+      const sub = await getActivePushSubscription();
+      setPushSubscribed(!!sub);
+      setPushPermission(await getNotificationPermission());
     }
-  }, [installDialogOpen]);
+  }, []);
+
+  useEffect(() => {
+    void refreshPushStatus();
+  }, [installDialogOpen, refreshPushStatus]);
 
   const prefsQuery = useQuery({
     queryKey: ["notification_preferences", user!.id],
@@ -171,6 +175,19 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
     }
   }
 
+  async function activatePushOnThisDevice() {
+    setActivatingPush(true);
+    try {
+      const result = await subscribeToPush();
+      await refreshPushStatus();
+      qc.invalidateQueries({ queryKey: ["notification_preferences", user!.id] });
+      if (result.ok) toast.success("Cet appareil est abonne aux notifications.");
+      else toast.error(result.reason ?? "Activation impossible sur cet appareil.");
+    } finally {
+      setActivatingPush(false);
+    }
+  }
+
   const logs = useQuery({
     queryKey: ["notification_logs", user!.id],
     queryFn: async () => {
@@ -218,6 +235,18 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {!pushSubscribed && pushPermission !== "denied" && !isPreviewContext() && isPushSupported() && (
+          <Button
+            type="button"
+            size="sm"
+            onClick={activatePushOnThisDevice}
+            disabled={activatingPush}
+            className="gap-1.5 text-xs bg-gradient-ocean text-primary-foreground"
+          >
+            {activatingPush ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+            Activer cet appareil
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"
