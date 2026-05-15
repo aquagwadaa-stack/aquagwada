@@ -35,7 +35,7 @@ type HistRow = {
   commune_id: string;
   starts_at: string;
   duration_minutes: number;
-  /** Poids de fiabilité de la source (1.0 = SMGEAG officiel, 0.8 = Facebook officiel, 0.4 = users) */
+  /** Poids métier de la source : officiel/affiche fiable ≈ 1, presse/communautaire fort ≈ 0.85-0.9, utilisateur isolé ≈ 0.3-0.55. */
   weight: number;
 };
 
@@ -112,6 +112,43 @@ function computeTrend(events: HistRow[]): "improving" | "stable" | "worsening" {
   return "stable";
 }
 
+function sourceUrlWeight(sourceUrl: string | null | undefined): number {
+  if (!sourceUrl) return 0.5;
+  let host = "";
+  try {
+    host = new URL(sourceUrl).hostname.toLowerCase();
+  } catch {
+    host = sourceUrl.toLowerCase();
+  }
+
+  if (host.includes("smgeag.fr")) return 0.95;
+  if (host.includes("facebook.com") || host.includes("fb.com")) return 0.9;
+  if (
+    host.includes("franceantilles.fr") ||
+    host.includes("rci.fm") ||
+    host.includes("karibinfo.com") ||
+    host.includes("guadeloupe.gouv.fr")
+  ) return 0.85;
+
+  return 0.6;
+}
+
+function sourceWeight(
+  src: string | null | undefined,
+  rel: number | null | undefined,
+  sourceUrl: string | null | undefined,
+): number {
+  const r = typeof rel === "number" ? rel : 0.5;
+  const urlWeight = sourceUrlWeight(sourceUrl);
+
+  if (src === "official") return Math.max(0.9, urlWeight, r);
+  if (src === "scraping") return Math.max(0.7, urlWeight, r);
+  if (src === "user_report") return Math.min(0.55, Math.max(0.3, r));
+  if (src === "forecast") return 0;
+
+  return Math.max(0.5, urlWeight, r);
+}
+
 export async function generateForecasts(): Promise<{ generated: number; communes: number; trend_breakdown: Record<string, number> }> {
   const { data: communes, error: cErr } = await supabaseAdmin.from("communes").select("id, name");
   if (cErr) throw cErr;
@@ -120,32 +157,23 @@ export async function generateForecasts(): Promise<{ generated: number; communes
 
   const { data: history, error: hErr } = await supabaseAdmin
     .from("outage_history")
-    .select("commune_id, starts_at, duration_minutes, source, reliability_score")
+    .select("commune_id, starts_at, duration_minutes, source, source_url, reliability_score")
     .gte("starts_at", fromIso);
   if (hErr) throw hErr;
 
   const { data: resolvedOutages } = await supabaseAdmin
     .from("outages")
-    .select("commune_id, starts_at, ends_at, source, reliability_score")
+    .select("commune_id, starts_at, ends_at, source, source_url, reliability_score")
     .gte("starts_at", fromIso)
     .in("status", ["resolved", "cancelled"])
     .not("ends_at", "is", null);
 
-  // Pondération par source : official=1.0, facebook=0.8, user=0.4
-  function sourceWeight(src: string | null | undefined, rel: number | null | undefined): number {
-    const r = typeof rel === "number" ? rel : 0.5;
-    if (src === "official") return Math.max(0.9, r);
-    if (src === "facebook") return Math.max(0.7, r);
-    if (src === "user") return Math.min(0.5, Math.max(0.3, r));
-    return r;
-  }
-
   const allHist: HistRow[] = [
-    ...((history ?? []).map((h: { commune_id: string; starts_at: string; duration_minutes: number; source: string | null; reliability_score: number | null }) => ({
+    ...((history ?? []).map((h: { commune_id: string; starts_at: string; duration_minutes: number; source: string | null; source_url: string | null; reliability_score: number | null }) => ({
       commune_id: h.commune_id,
       starts_at: h.starts_at,
       duration_minutes: h.duration_minutes,
-      weight: sourceWeight(h.source, h.reliability_score),
+      weight: sourceWeight(h.source, h.reliability_score, h.source_url),
     }))),
     ...((resolvedOutages ?? [])
       .filter((r): r is typeof r & { ends_at: string } => !!r.ends_at)
@@ -153,7 +181,7 @@ export async function generateForecasts(): Promise<{ generated: number; communes
         commune_id: r.commune_id,
         starts_at: r.starts_at,
         duration_minutes: Math.max(1, Math.round((new Date(r.ends_at).getTime() - new Date(r.starts_at).getTime()) / 60000)),
-        weight: sourceWeight(r.source, r.reliability_score),
+        weight: sourceWeight(r.source, r.reliability_score, r.source_url),
       }))),
   ];
 
@@ -246,7 +274,7 @@ export async function generateForecasts(): Promise<{ generated: number; communes
       const riskLabel = adjusted >= 0.55 ? "risque élevé"
         : adjusted >= 0.3 ? "risque modéré"
         : "risque faible";
-      dayBasis.push(`${riskLabel} basé sur ${events.length} événements historiques pondérés (${Math.round(observedSpan)}j observés)`);
+      dayBasis.push(`${riskLabel} basé sur ${events.length} événements historiques pondérés par source (${Math.round(observedSpan)}j observés)`);
       dayBasis.push(`Plage modale ${winStart}–${winEnd}`);
       if (Math.abs(dowSignal - 1) > 0.25) {
         dayBasis.push(`${date.toLocaleDateString("fr-FR", { weekday: "long" })}s ${dowSignal > 1 ? "à risque" : "plutôt calmes"} (${dowSignal.toFixed(2)}×)`);
