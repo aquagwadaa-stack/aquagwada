@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PLAN_CAPS, type Tier } from "@/lib/subscription";
 import { InstallAndPushDialog } from "@/components/notifications/InstallAndPushDialog";
 import { getActivePushSubscription, getNotificationPermission, isPreviewContext, isPushSupported, subscribeToPush } from "@/lib/push-notifications";
+import { useIsAdmin } from "@/hooks/use-admin";
 
 type Prefs = {
   push_enabled: boolean;
@@ -40,6 +41,10 @@ type TestPushResponse = {
   error?: string;
 };
 
+type TestEmailResponse = TestPushResponse & {
+  id?: string;
+};
+
 const DEFAULT_PREFS: Prefs = {
   push_enabled: true,
   email_enabled: false,
@@ -67,6 +72,7 @@ function shallowEqualPrefs(a: Prefs, b: Prefs): boolean {
 
 export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   const { user, session } = useAuth();
+  const { isAdmin } = useIsAdmin();
   const qc = useQueryClient();
   const caps = PLAN_CAPS[tier];
   const [installed, setInstalled] = useState(false);
@@ -77,6 +83,7 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   const [draft, setDraft] = useState<Prefs>(DEFAULT_PREFS);
   const [saving, setSaving] = useState(false);
   const [testingPush, setTestingPush] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
   const [activatingPush, setActivatingPush] = useState(false);
 
   const refreshPushStatus = useCallback(async () => {
@@ -114,6 +121,13 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   }, [prefsQuery.data]);
 
   const isDirty = useMemo(() => !shallowEqualPrefs(draft, savedPrefs), [draft, savedPrefs]);
+  const wantsPush = draft.push_enabled
+    && (draft.notify_outage_start || draft.notify_water_back || draft.notify_preventive || draft.notify_preventive_water_back);
+  const canActivatePushOnSave = wantsPush
+    && !pushSubscribed
+    && pushPermission !== "denied"
+    && !isPreviewContext()
+    && isPushSupported();
 
   function patch(p: Partial<Prefs>) {
     setDraft((current) => ({ ...current, ...p }));
@@ -139,16 +153,28 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   }
 
   async function onClickSave() {
-    const wantsPush = draft.push_enabled
-      && (draft.notify_outage_start || draft.notify_water_back || draft.notify_preventive || draft.notify_preventive_water_back);
-    const needsInstallFlow = wantsPush
-      && !isPreviewContext()
-      && (!installed || !pushSubscribed)
-      && pushPermission !== "denied";
-
-    if (needsInstallFlow) {
-      setInstallDialogOpen(true);
-      return;
+    if (wantsPush && !isPreviewContext() && isPushSupported()) {
+      const currentSub = await getActivePushSubscription();
+      if (!currentSub && pushPermission !== "denied") {
+        setActivatingPush(true);
+        try {
+          const result = await subscribeToPush();
+          await refreshPushStatus();
+          qc.invalidateQueries({ queryKey: ["notification_preferences", user!.id] });
+          if (result.ok) {
+            window.dispatchEvent(new Event("aquagwada:push-subscription-changed"));
+            toast.success("Notifications activees sur cet appareil.");
+          } else {
+            toast.warning(result.reason ?? "Preferences sauvegardees, mais les push ne sont pas encore actives sur cet appareil.");
+          }
+        } finally {
+          setActivatingPush(false);
+        }
+      } else if (currentSub) {
+        await refreshPushStatus();
+      } else if (pushPermission === "denied") {
+        toast.warning("Notifications bloquees sur cet appareil. Il faudra les autoriser dans les reglages de l'app ou du navigateur.");
+      }
     }
     await persist();
   }
@@ -213,10 +239,42 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
       const result = await subscribeToPush();
       await refreshPushStatus();
       qc.invalidateQueries({ queryKey: ["notification_preferences", user!.id] });
-      if (result.ok) toast.success("Cet appareil est abonne aux notifications.");
-      else toast.error(result.reason ?? "Activation impossible sur cet appareil.");
+      if (result.ok) {
+        window.dispatchEvent(new Event("aquagwada:push-subscription-changed"));
+        toast.success("Cet appareil est abonne aux notifications.");
+      } else {
+        toast.error(result.reason ?? "Activation impossible sur cet appareil.");
+      }
     } finally {
       setActivatingPush(false);
+    }
+  }
+
+  async function sendTestEmail() {
+    if (!session?.access_token) {
+      toast.error("Reconnectez-vous pour envoyer un email test.");
+      return;
+    }
+    setTestingEmail(true);
+    try {
+      const res = await fetch("/api/notifications/test-email", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${session.access_token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({})) as TestEmailResponse;
+      if (res.ok && body.ok) {
+        toast.success(body.message ?? "Email test envoye.");
+      } else {
+        toast.error(body.message ?? body.error ?? "Email test non envoye.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Email test non envoye.");
+    } finally {
+      setTestingEmail(false);
     }
   }
 
@@ -266,34 +324,47 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
         <span className="flex-1">{status.text}</span>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        {pushPermission !== "denied" && !isPreviewContext() && isPushSupported() && (
+      {isAdmin && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-border bg-muted/20 px-3 py-2">
+          {pushPermission !== "denied" && !isPreviewContext() && isPushSupported() && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={activatePushOnThisDevice}
+              disabled={activatingPush}
+              className="gap-1.5 text-xs bg-gradient-ocean text-primary-foreground"
+            >
+              {activatingPush ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
+              {pushSubscribed ? "Reparer cet appareil" : "Activer cet appareil"}
+            </Button>
+          )}
           <Button
             type="button"
             size="sm"
-            onClick={activatePushOnThisDevice}
-            disabled={activatingPush}
-            className="gap-1.5 text-xs bg-gradient-ocean text-primary-foreground"
+            variant="outline"
+            onClick={sendTestPush}
+            disabled={testingPush || isPreviewContext() || !isPushSupported() || pushPermission === "denied"}
+            className="gap-1.5 text-xs"
           >
-            {activatingPush ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
-            {pushSubscribed ? "Reparer cet appareil" : "Activer cet appareil"}
+            {testingPush ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+            Tester une push
           </Button>
-        )}
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={sendTestPush}
-          disabled={testingPush || isPreviewContext() || !isPushSupported() || pushPermission === "denied"}
-          className="gap-1.5 text-xs"
-        >
-          {testingPush ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-          Tester une notification
-        </Button>
-        <span className="text-[11px] text-muted-foreground">
-          Envoie une vraie push serveur a ce compte et cet appareil.
-        </span>
-      </div>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={sendTestEmail}
+            disabled={testingEmail || isPreviewContext()}
+            className="gap-1.5 text-xs"
+          >
+            {testingEmail ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />}
+            Tester un email
+          </Button>
+          <span className="text-[11px] text-muted-foreground">
+            Outils admin pour verifier l'envoi serveur.
+          </span>
+        </div>
+      )}
 
       <NotifMatrix
         prefs={draft}
@@ -331,9 +402,12 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
 
       <div className="sticky bottom-2 -mx-1 px-1 pt-2 z-10">
         <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card/95 backdrop-blur px-3 py-2.5 shadow-md">
-          <p className="text-xs text-muted-foreground">{isDirty ? "Modifications non enregistrees" : "Tout est a jour"}</p>
-          <Button size="sm" onClick={onClickSave} disabled={!isDirty || saving} className="gap-1.5 bg-gradient-ocean text-primary-foreground">
-            <Save className="h-3.5 w-3.5" /> {saving ? "Enregistrement..." : "Sauvegarder"}
+          <p className="text-xs text-muted-foreground">
+            {canActivatePushOnSave ? "Notifications a activer sur cet appareil" : isDirty ? "Modifications non enregistrees" : "Tout est a jour"}
+          </p>
+          <Button size="sm" onClick={onClickSave} disabled={(!isDirty && !canActivatePushOnSave) || saving || activatingPush} className="gap-1.5 bg-gradient-ocean text-primary-foreground">
+            {saving || activatingPush ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            {activatingPush ? "Activation..." : saving ? "Enregistrement..." : canActivatePushOnSave && !isDirty ? "Activer" : "Sauvegarder"}
           </Button>
         </div>
       </div>
