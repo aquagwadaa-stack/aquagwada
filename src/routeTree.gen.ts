@@ -21,6 +21,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as CheckoutReturnRouteImport } from './routes/checkout.return'
 import { Route as ApiNotificationsTestPushRouteImport } from './routes/api.notifications.test-push'
 import { Route as ApiNotificationsTestEmailRouteImport } from './routes/api.notifications.test-email'
+import { Route as LovableEmailQueueProcessRouteImport } from './routes/lovable/email/queue/process'
 import { Route as ApiPublicPaymentsWebhookRouteImport } from './routes/api.public.payments.webhook'
 import { Route as ApiPublicOutagesIngestRouteImport } from './routes/api.public.outages.ingest'
 import { Route as ApiPublicJobsSendTrialEmailsRouteImport } from './routes/api.public.jobs.send-trial-emails'
@@ -95,6 +96,12 @@ const ApiNotificationsTestEmailRoute =
   ApiNotificationsTestEmailRouteImport.update({
     id: '/api/notifications/test-email',
     path: '/api/notifications/test-email',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const LovableEmailQueueProcessRoute =
+  LovableEmailQueueProcessRouteImport.update({
+    id: '/lovable/email/queue/process',
+    path: '/lovable/email/queue/process',
     getParentRoute: () => rootRouteImport,
   } as any)
 const ApiPublicPaymentsWebhookRoute =
@@ -201,6 +208,7 @@ export interface FileRoutesByFullPath {
   '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -228,6 +236,7 @@ export interface FileRoutesByTo {
   '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -256,6 +265,7 @@ export interface FileRoutesById {
   '/api/public/jobs/send-trial-emails': typeof ApiPublicJobsSendTrialEmailsRoute
   '/api/public/outages/ingest': typeof ApiPublicOutagesIngestRoute
   '/api/public/payments/webhook': typeof ApiPublicPaymentsWebhookRoute
+  '/lovable/email/queue/process': typeof LovableEmailQueueProcessRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -285,6 +295,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
+    | '/lovable/email/queue/process'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -312,6 +323,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
+    | '/lovable/email/queue/process'
   id:
     | '__root__'
     | '/'
@@ -339,6 +351,7 @@ export interface FileRouteTypes {
     | '/api/public/jobs/send-trial-emails'
     | '/api/public/outages/ingest'
     | '/api/public/payments/webhook'
+    | '/lovable/email/queue/process'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -367,6 +380,7 @@ export interface RootRouteChildren {
   ApiPublicJobsSendTrialEmailsRoute: typeof ApiPublicJobsSendTrialEmailsRoute
   ApiPublicOutagesIngestRoute: typeof ApiPublicOutagesIngestRoute
   ApiPublicPaymentsWebhookRoute: typeof ApiPublicPaymentsWebhookRoute
+  LovableEmailQueueProcessRoute: typeof LovableEmailQueueProcessRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -453,6 +467,13 @@ declare module '@tanstack/react-router' {
       path: '/api/notifications/test-email'
       fullPath: '/api/notifications/test-email'
       preLoaderRoute: typeof ApiNotificationsTestEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/lovable/email/queue/process': {
+      id: '/lovable/email/queue/process'
+      path: '/lovable/email/queue/process'
+      fullPath: '/lovable/email/queue/process'
+      preLoaderRoute: typeof LovableEmailQueueProcessRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/api/public/payments/webhook': {
@@ -576,16 +597,8 @@ const rootRouteChildren: RootRouteChildren = {
   ApiPublicJobsSendTrialEmailsRoute: ApiPublicJobsSendTrialEmailsRoute,
   ApiPublicOutagesIngestRoute: ApiPublicOutagesIngestRoute,
   ApiPublicPaymentsWebhookRoute: ApiPublicPaymentsWebhookRoute,
+  LovableEmailQueueProcessRoute: LovableEmailQueueProcessRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
   ._addFileTypes<FileRouteTypes>()
-
-import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
-declare module '@tanstack/react-start' {
-  interface Register {
-    ssr: true
-    router: Awaited<ReturnType<typeof getRouter>>
-  }
-}
