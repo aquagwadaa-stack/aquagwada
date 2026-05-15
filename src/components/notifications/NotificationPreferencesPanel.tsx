@@ -34,6 +34,12 @@ type NotificationLogRow = {
   payload: { note?: string } | null;
 };
 
+type TestPushResponse = {
+  ok?: boolean;
+  message?: string;
+  error?: string;
+};
+
 const DEFAULT_PREFS: Prefs = {
   push_enabled: true,
   email_enabled: false,
@@ -154,25 +160,51 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
     }
     setTestingPush(true);
     try {
-      const res = await fetch("/api/notifications/test-push", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${session.access_token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({}),
-      });
-      const body = await res.json().catch(() => ({})) as { ok?: boolean; message?: string; error?: string };
-      if (res.ok && body.ok) {
-        toast.success(body.message ?? "Notification test envoyee.");
-      } else {
-        toast.error(body.message ?? body.error ?? "Notification test non envoyee.");
+      const firstTry = await requestTestPush(session.access_token);
+      if (firstTry.res.ok && firstTry.body.ok) {
+        toast.success(firstTry.body.message ?? "Notification test envoyee.");
+        return;
       }
+
+      const failure = `${firstTry.body.message ?? ""} ${firstTry.body.error ?? ""}`.toLowerCase();
+      if (failure.includes("aucun appareil")) {
+        toast("Appareil non enregistre, tentative de reparation...");
+        const repair = await subscribeToPush();
+        await refreshPushStatus();
+        qc.invalidateQueries({ queryKey: ["notification_preferences", user!.id] });
+        if (!repair.ok) {
+          toast.error(repair.reason ?? "Impossible de reparer cet appareil.");
+          return;
+        }
+
+        const retry = await requestTestPush(session.access_token);
+        if (retry.res.ok && retry.body.ok) {
+          toast.success("Appareil repare, notification test envoyee.");
+        } else {
+          toast.error(retry.body.message ?? retry.body.error ?? "Notification test non envoyee apres reparation.");
+        }
+        return;
+      }
+
+      toast.error(firstTry.body.message ?? firstTry.body.error ?? "Notification test non envoyee.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Notification test non envoyee.");
     } finally {
       setTestingPush(false);
     }
+  }
+
+  async function requestTestPush(token: string): Promise<{ res: Response; body: TestPushResponse }> {
+    const res = await fetch("/api/notifications/test-push", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({}),
+    });
+    const body = await res.json().catch(() => ({})) as TestPushResponse;
+    return { res, body };
   }
 
   async function activatePushOnThisDevice() {
@@ -235,7 +267,7 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        {!pushSubscribed && pushPermission !== "denied" && !isPreviewContext() && isPushSupported() && (
+        {pushPermission !== "denied" && !isPreviewContext() && isPushSupported() && (
           <Button
             type="button"
             size="sm"
@@ -244,7 +276,7 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
             className="gap-1.5 text-xs bg-gradient-ocean text-primary-foreground"
           >
             {activatingPush ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bell className="h-3.5 w-3.5" />}
-            Activer cet appareil
+            {pushSubscribed ? "Reparer cet appareil" : "Activer cet appareil"}
           </Button>
         )}
         <Button
