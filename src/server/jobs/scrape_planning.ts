@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 /**
  * Scrape les plannings hebdomadaires SMGEAG depuis l'API publique WordPress.
  * Les plannings sont publies sous forme d'images : on extrait les images
- * officielles, puis Lovable AI lit chaque image pour produire des lignes datees.
+ * officielles, puis une IA lit chaque image pour produire des lignes datees.
  *
  * Regle de verite :
  * - passe termine => outage_history (historique reel officiel)
@@ -15,6 +15,7 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
 const WP_POSTS_URL = "https://www.smgeag.fr/wp-json/wp/v2/posts";
 const AI_GATEWAY_URL = "https://ai.gateway.lovable.dev/v1/chat/completions";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models";
 const DEFAULT_BACKFILL_SINCE = "2025-10-01";
 const OFFICIAL_BASIS_PREFIX = "Planning officiel SMGEAG";
 const DEFAULT_MIN_IMPORTED_ROWS = 12;
@@ -56,6 +57,8 @@ type ExtractionResult = {
   modelsUsed: string[];
   errors: string[];
 };
+
+type InlineImage = { mime_type: string; data: string };
 
 function norm(s: string): string {
   return (s || "")
@@ -242,14 +245,18 @@ async function fetchPlanningPosts(opts: { since?: string; maxPosts: number }): P
   return posts;
 }
 
-function planningAiModels(): string[] {
+function lovableAiModels(): string[] {
   const configured = process.env.PLANNING_AI_MODELS || process.env.PLANNING_AI_MODEL || "";
   const models = configured.split(",").map((m) => m.trim()).filter(Boolean);
   if (models.length) return models;
-
-  // Flash keeps the weekly cron affordable; Pro is only a fallback when Flash
-  // fails or returns an unusable empty JSON for a planning image.
   return ["google/gemini-2.5-flash", "google/gemini-2.5-pro"];
+}
+
+function directGeminiModels(): string[] {
+  const configured = process.env.GEMINI_AI_MODELS || process.env.GEMINI_MODEL || "";
+  const models = configured.split(",").map((m) => m.trim().replace(/^google\//, "")).filter(Boolean);
+  if (models.length) return models;
+  return ["gemini-2.5-flash", "gemini-2.5-pro"];
 }
 
 function buildPrompt(post: WPPost, imageUrl: string, communes: CommuneRow[]): string {
@@ -281,7 +288,7 @@ Regles imperatives:
 - Ne retourne pas de commentaire, uniquement le JSON.`;
 }
 
-async function callAiForImage(model: string, prompt: string, imageUrl: string): Promise<AIPlanningItem[]> {
+async function callLovableAiForImage(model: string, prompt: string, imageUrl: string): Promise<AIPlanningItem[]> {
   const apiKey = process.env.LOVABLE_API_KEY;
   if (!apiKey) throw new Error("LOVABLE_API_KEY missing");
 
@@ -307,32 +314,135 @@ async function callAiForImage(model: string, prompt: string, imageUrl: string): 
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`AI ${model} HTTP ${res.status}: ${text.slice(0, 220)}`);
+    throw new Error(`Lovable AI ${model} HTTP ${res.status}: ${text.slice(0, 220)}`);
   }
 
   const json = (await res.json()) as { choices?: Array<{ message?: { content?: string } }> };
   const raw = json.choices?.[0]?.message?.content;
-  if (!raw) throw new Error(`AI ${model} empty response`);
+  if (!raw) throw new Error(`Lovable AI ${model} empty response`);
 
   const parsed = JSON.parse(cleanJson(raw)) as { items?: AIPlanningItem[] };
   return Array.isArray(parsed.items) ? parsed.items : [];
 }
 
-async function extractItemsFromImage(post: WPPost, imageUrl: string, communes: CommuneRow[]): Promise<{ items: AIPlanningItem[]; model: string; error: string | null }> {
-  const prompt = buildPrompt(post, imageUrl, communes);
-  let lastError: string | null = null;
+function mimeFromUrl(url: string): string {
+  const clean = url.split("?")[0].toLowerCase();
+  if (clean.endsWith(".jpg") || clean.endsWith(".jpeg")) return "image/jpeg";
+  if (clean.endsWith(".webp")) return "image/webp";
+  return "image/png";
+}
 
-  for (const model of planningAiModels()) {
-    try {
-      const items = await callAiForImage(model, prompt, imageUrl);
-      if (items.length > 0) return { items, model, error: null };
-      lastError = `AI ${model} returned 0 item`;
-    } catch (e) {
-      lastError = e instanceof Error ? e.message : String(e);
-    }
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+async function fetchInlineImage(imageUrl: string): Promise<InlineImage> {
+  const res = await fetch(imageUrl, {
+    headers: { "user-agent": `AquaGwadaBot/1.0 (+mailto:${CONTACT_EMAIL})` },
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new Error(`image fetch HTTP ${res.status}`);
+  const mime = (res.headers.get("content-type") || mimeFromUrl(imageUrl)).split(";")[0].trim();
+  const buffer = await res.arrayBuffer();
+  return { mime_type: mime || mimeFromUrl(imageUrl), data: arrayBufferToBase64(buffer) };
+}
+
+async function callDirectGeminiForImage(model: string, prompt: string, inlineImage: InlineImage): Promise<AIPlanningItem[]> {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("GEMINI_API_KEY missing");
+
+  const res = await fetch(`${GEMINI_API_URL}/${model}:generateContent`, {
+    method: "POST",
+    headers: { "x-goog-api-key": apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: prompt },
+            { inline_data: inlineImage },
+          ],
+        },
+      ],
+      generationConfig: {
+        temperature: 0,
+        responseMimeType: "application/json",
+      },
+    }),
+    signal: AbortSignal.timeout(120_000),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Gemini ${model} HTTP ${res.status}: ${text.slice(0, 220)}`);
   }
 
-  return { items: [], model: planningAiModels().join(" -> "), error: lastError ?? "AI extraction failed" };
+  const json = (await res.json()) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+  const raw = json.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("\n").trim();
+  if (!raw) throw new Error(`Gemini ${model} empty response`);
+
+  const parsed = JSON.parse(cleanJson(raw)) as { items?: AIPlanningItem[] };
+  return Array.isArray(parsed.items) ? parsed.items : [];
+}
+
+function isLovableCreditError(message: string): boolean {
+  return /HTTP 402|payment_required|not enough credits/i.test(message);
+}
+
+async function extractItemsFromImage(post: WPPost, imageUrl: string, communes: CommuneRow[]): Promise<{ items: AIPlanningItem[]; model: string; error: string | null }> {
+  const prompt = buildPrompt(post, imageUrl, communes);
+  const errors: string[] = [];
+
+  if (process.env.LOVABLE_API_KEY) {
+    for (const model of lovableAiModels()) {
+      try {
+        const items = await callLovableAiForImage(model, prompt, imageUrl);
+        if (items.length > 0) return { items, model: `lovable:${model}`, error: null };
+        errors.push(`Lovable AI ${model} returned 0 item`);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        errors.push(message);
+        if (isLovableCreditError(message)) break;
+      }
+    }
+  } else {
+    errors.push("Lovable AI skipped: LOVABLE_API_KEY missing");
+  }
+
+  if (process.env.GEMINI_API_KEY) {
+    let inlineImage: InlineImage | null = null;
+    try {
+      inlineImage = await fetchInlineImage(imageUrl);
+    } catch (e) {
+      errors.push(`Gemini image inline failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+
+    if (inlineImage) {
+      for (const model of directGeminiModels()) {
+        try {
+          const items = await callDirectGeminiForImage(model, prompt, inlineImage);
+          if (items.length > 0) return { items, model: `gemini:${model}`, error: null };
+          errors.push(`Gemini ${model} returned 0 item`);
+        } catch (e) {
+          errors.push(e instanceof Error ? e.message : String(e));
+        }
+      }
+    }
+  } else {
+    errors.push("Direct Gemini skipped: GEMINI_API_KEY missing");
+  }
+
+  return {
+    items: [],
+    model: [...lovableAiModels().map((m) => `lovable:${m}`), ...directGeminiModels().map((m) => `gemini:${m}`)].join(" -> "),
+    error: errors.join(" | ").slice(0, 1000) || "AI extraction failed",
+  };
 }
 
 function dedupeItems(items: AIPlanningItem[]): AIPlanningItem[] {
