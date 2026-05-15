@@ -25,12 +25,14 @@ on:
           - scrape-ai-history
           - generate-forecasts
   schedule:
-    # Cheap/non-AI jobs only. Image/AI planning imports stay manual while credits are constrained.
     - cron: "7,37 * * * *"              # SMGEAG text/web scrape, every 30 min
     - cron: "3,13,23,33,43,53 * * * *" # reports + notifications, every 10 min
     - cron: "17 * * * *"                # statistical forecasts, hourly
     - cron: "11 * * * *"                # preventive notification catch-up, hourly
     - cron: "29 3 * * *"                # cleanup, daily
+    - cron: "19 12,16,20 * * 1,2"      # AI SMGEAG planning check, Mon/Tue daytime Guadeloupe
+    - cron: "41 */3 * * *"              # AI web/Facebook/news ingestion, controlled every 3h
+    - cron: "31 2 * * 0"                # AI planning archive backfill, weekly
 
 permissions:
   contents: read
@@ -122,6 +124,7 @@ jobs:
 
   scrape-planning:
     if: >-
+      github.event_name == 'schedule' && github.event.schedule == '19 12,16,20 * * 1,2' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'scrape-planning')
     runs-on: ubuntu-latest
     steps:
@@ -136,6 +139,7 @@ jobs:
 
   backfill-planning:
     if: >-
+      github.event_name == 'schedule' && github.event.schedule == '31 2 * * 0' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'backfill-planning')
     runs-on: ubuntu-latest
     steps:
@@ -150,6 +154,7 @@ jobs:
 
   scrape-ai-history:
     if: >-
+      github.event_name == 'schedule' && github.event.schedule == '41 */3 * * *' ||
       github.event_name == 'workflow_dispatch' && (github.event.inputs.job == 'all' || github.event.inputs.job == 'scrape-ai-history')
     runs-on: ubuntu-latest
     steps:
