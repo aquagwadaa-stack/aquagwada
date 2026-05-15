@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { SiteHeader } from "./SiteHeader";
 import { SiteFooter } from "./SiteFooter";
 import { PaymentTestModeBanner } from "@/components/payments/PaymentTestModeBanner";
+import { PushOnboardingPrompt } from "@/components/notifications/PushOnboardingPrompt";
 
 export function AppShell({ children }: { children: ReactNode }) {
   return (
@@ -10,6 +11,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <SiteHeader />
       <main className="flex-1">{children}</main>
       <SiteFooter />
+      <PushOnboardingPrompt />
     </div>
   );
 }
