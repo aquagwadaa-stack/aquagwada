@@ -38,6 +38,29 @@ type ExistingNotificationLog = {
   dry_run: boolean;
 };
 
+type PushSubscriptionUserRow = {
+  user_id: string;
+};
+
+const DEFAULT_NOTIFICATION_PREFS: Omit<Pref, "user_id"> = {
+  email_enabled: false,
+  sms_enabled: false,
+  whatsapp_enabled: false,
+  push_enabled: true,
+  notify_outage_start: true,
+  notify_water_back: true,
+  notify_preventive: true,
+  notify_preventive_water_back: false,
+  preventive_hours_before: 24,
+  preventive_water_back_hours_before: 1,
+  quiet_hours_start: null,
+  quiet_hours_end: null,
+};
+
+function defaultPrefForUser(userId: string): Pref {
+  return { user_id: userId, ...DEFAULT_NOTIFICATION_PREFS };
+}
+
 function inQuietHours(start: string | null, end: string | null, now: Date): boolean {
   if (!start || !end) return false;
   const cur = minutesInGuadeloupeDay(now);
@@ -144,6 +167,10 @@ export async function dispatchNotifications(): Promise<{
   candidates: number;
   logged: number;
   skipped: number;
+  sent: number;
+  dry_run: number;
+  errors: number;
+  defaulted_prefs: number;
 }> {
   const now = new Date();
   const startLookbackIso = new Date(now.getTime() - 30 * 60_000).toISOString();
@@ -186,6 +213,10 @@ export async function dispatchNotifications(): Promise<{
   let candidates = 0;
   let logged = 0;
   let skipped = 0;
+  let sentCount = 0;
+  let dryRunCount = 0;
+  let errors = 0;
+  let defaultedPrefs = 0;
 
   async function processGroup(outages: Outage[], kind: NotificationKind) {
     for (const outage of outages) {
@@ -200,7 +231,19 @@ export async function dispatchNotifications(): Promise<{
         .from("notification_preferences")
         .select("*")
         .in("user_id", userIds);
-      const prefs = (prefsRows ?? []) as Pref[];
+      const { data: pushRows } = await supabaseAdmin
+        .from("push_subscriptions")
+        .select("user_id")
+        .in("user_id", userIds);
+      const prefByUser = new Map(((prefsRows ?? []) as Pref[]).map((pref) => [pref.user_id, pref]));
+      const pushUserIds = new Set(((pushRows ?? []) as PushSubscriptionUserRow[]).map((row) => row.user_id));
+      const prefs = userIds.flatMap((userId) => {
+        const pref = prefByUser.get(userId);
+        if (pref) return [pref];
+        if (!pushUserIds.has(userId)) return [];
+        defaultedPrefs += 1;
+        return [defaultPrefForUser(userId)];
+      });
 
       const commune = await supabaseAdmin.from("communes").select("name").eq("id", outage.commune_id).maybeSingle();
       const communeName = commune.data?.name ?? "votre commune";
@@ -284,9 +327,20 @@ export async function dispatchNotifications(): Promise<{
             ? await supabaseAdmin.from("notification_logs").update(logRow).eq("id", existingLog.id)
             : await supabaseAdmin.from("notification_logs").insert(logRow);
 
-          if (!error) logged += 1;
-          else if (String(error.message).toLowerCase().includes("duplicate")) skipped += 1;
-          else console.error("[dispatch_notifications] log write error:", error.message);
+          if (!error) {
+            logged += 1;
+            if (sent) sentCount += 1;
+            else dryRunCount += 1;
+          } else if (
+            String(error.message).toLowerCase().includes("duplicate")
+            || String(error.message).toLowerCase().includes("unique")
+            || error.code === "23505"
+          ) {
+            skipped += 1;
+          } else {
+            errors += 1;
+            console.error("[dispatch_notifications] log write error:", error.message);
+          }
         }
       }
     }
@@ -297,5 +351,5 @@ export async function dispatchNotifications(): Promise<{
   await processGroup(((scheduled ?? []) as Outage[]).filter(isTrustedOutageSource), "preventive");
   await processGroup(((aboutToEnd ?? []) as Outage[]).filter(isTrustedOutageSource), "preventive_water_back");
 
-  return { ok: true, candidates, logged, skipped };
+  return { ok: errors === 0, candidates, logged, skipped, sent: sentCount, dry_run: dryRunCount, errors, defaulted_prefs: defaultedPrefs };
 }
