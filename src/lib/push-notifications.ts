@@ -52,7 +52,8 @@ export function isPreviewContext(): boolean {
 export async function registerServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (!isPushSupported() || isPreviewContext()) return null;
   try {
-    return await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    return await navigator.serviceWorker.ready;
   } catch (e) {
     console.warn("[push] SW register failed", e);
     return null;
@@ -66,7 +67,8 @@ export async function getNotificationPermission(): Promise<NotificationPermissio
 
 export async function getActivePushSubscription(): Promise<PushSubscription | null> {
   if (!isPushSupported() || isPreviewContext()) return null;
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await registerServiceWorker();
+  if (!reg) return null;
   const sub = await reg.pushManager.getSubscription();
   if (!sub) return null;
 
@@ -84,7 +86,9 @@ export async function subscribeToPush(): Promise<{ ok: boolean; reason?: string 
   if (!isPushSupported()) return { ok: false, reason: "Notifications non supportees sur cet appareil" };
   if (isPreviewContext()) return { ok: false, reason: "Ouvre AquaGwada sur le site publie pour activer les notifications" };
 
-  const reg = await navigator.serviceWorker.ready;
+  const reg = await registerServiceWorker();
+  if (!reg) return { ok: false, reason: "Service worker indisponible sur cet appareil" };
+
   const perm = await Notification.requestPermission();
   if (perm !== "granted") return { ok: false, reason: "Permission refusee" };
 
@@ -109,7 +113,13 @@ export async function subscribeToPush(): Promise<{ ok: boolean; reason?: string 
 
   if (error) return { ok: false, reason: error.message };
 
-  await supabase.from("notification_preferences").update({ push_enabled: true }).eq("user_id", user.id);
+  const { error: prefError } = await supabase.from("notification_preferences").upsert({
+    user_id: user.id,
+    push_enabled: true,
+    updated_at: new Date().toISOString(),
+  }, { onConflict: "user_id" });
+  if (prefError) return { ok: false, reason: prefError.message };
+
   return { ok: true };
 }
 
