@@ -1,5 +1,7 @@
 import { supabase } from "@/integrations/supabase/client";
 
+const BOGUS_SMGEAG_HOMEPAGE_URL = "https://www.smgeag.fr/";
+
 export type Outage = {
   id: string;
   commune_id: string;
@@ -15,6 +17,10 @@ export type Outage = {
   source_url: string | null;
   commune?: { name: string; slug: string } | null;
 };
+
+export function isTrustedOutageSource(outage: Pick<Outage, "source_url">): boolean {
+  return outage.source_url !== BOGUS_SMGEAG_HOMEPAGE_URL;
+}
 
 function effectiveEndMs(outage: Outage): number {
   if (outage.ends_at) return new Date(outage.ends_at).getTime();
@@ -52,6 +58,7 @@ export async function fetchOutagesWindow(fromIso: string, toIso: string, commune
   const fromMs = new Date(fromIso).getTime();
   const toMs = new Date(toIso).getTime();
   return ((data ?? []) as unknown as Outage[])
+    .filter(isTrustedOutageSource)
     .map(normalizeOutageStatus)
     .filter((o) => new Date(o.starts_at).getTime() <= toMs && effectiveEndMs(o) >= fromMs);
 }
@@ -70,6 +77,7 @@ export async function fetchOngoingOutages(communeIds?: string[]): Promise<Outage
   const { data, error } = await q;
   if (error) throw error;
   return ((data ?? []) as unknown as Outage[])
+    .filter(isTrustedOutageSource)
     .map(normalizeOutageStatus)
     .filter((o) => o.status === "ongoing");
 }
@@ -83,5 +91,7 @@ export async function fetchOutagesByCommune(communeId: string, days = 30): Promi
     .gte("starts_at", fromIso)
     .order("starts_at", { ascending: false });
   if (error) throw error;
-  return ((data ?? []) as unknown as Outage[]).map(normalizeOutageStatus);
+  return ((data ?? []) as unknown as Outage[])
+    .filter(isTrustedOutageSource)
+    .map(normalizeOutageStatus);
 }
