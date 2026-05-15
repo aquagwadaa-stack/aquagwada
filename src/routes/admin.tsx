@@ -1,7 +1,7 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, AlertTriangle, Droplets, Eye, History, RefreshCw, ShieldCheck, Sparkles, Users } from "lucide-react";
-import { useEffect, type ReactNode } from "react";
+import { Activity, AlertTriangle, CheckCircle2, DatabaseZap, Droplets, Eye, History, Loader2, RefreshCw, ShieldCheck, Sparkles, Users, XCircle } from "lucide-react";
+import { useEffect, useState, type ReactNode } from "react";
 import { toast } from "sonner";
 import { AppShell } from "@/components/layout/AppShell";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,14 @@ export const Route = createFileRoute("/admin")({
     ],
   }),
 });
+
+type JobStepResult = {
+  label: string;
+  ok: boolean;
+  status: number;
+  body: unknown;
+  error?: string;
+};
 
 function AdminPage() {
   const { user, loading: authLoading } = useAuth();
@@ -149,6 +157,18 @@ function AdminContent() {
     },
   });
 
+  const refetchDashboard = () => {
+    void Promise.all([
+      usersStats.refetch(),
+      subsStats.refetch(),
+      outagesStats.refetch(),
+      historyStats.refetch(),
+      forecastStats.refetch(),
+      reportsStats.refetch(),
+      scraperRuns.refetch(),
+    ]);
+  };
+
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl px-4 sm:px-6 py-8 space-y-8">
@@ -243,6 +263,8 @@ function AdminContent() {
           />
         </section>
 
+        <RepairDataPanel onDone={refetchDashboard} />
+
         <section className="rounded-2xl border border-border bg-card p-5 shadow-soft">
           <h2 className="font-display text-lg font-semibold mb-3">Repartition des souscriptions</h2>
           <div className="grid gap-2 sm:grid-cols-2 text-sm">
@@ -317,7 +339,118 @@ function AdminContent() {
   );
 }
 
-function KpiCard({ icon, title, value, sub }: { icon: ReactNode; title: string; value: number | string; sub?: string }) {
+function RepairDataPanel({ onDone }: { onDone: () => void }) {
+  const { session } = useAuth();
+  const [running, setRunning] = useState<"current" | "backfill" | null>(null);
+  const [results, setResults] = useState<JobStepResult[]>([]);
+
+  async function postJob(label: string, path: string, body: unknown = {}): Promise<JobStepResult> {
+    const token = session?.access_token;
+    if (!token) return { label, ok: false, status: 0, body: null, error: "Session admin absente" };
+
+    const res = await fetch(path, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const text = await res.text();
+    let parsed: unknown = text;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = text;
+    }
+    const bodyOk = typeof parsed === "object" && parsed !== null && "ok" in parsed ? (parsed as { ok?: unknown }).ok !== false : true;
+    return { label, ok: res.ok && bodyOk, status: res.status, body: parsed };
+  }
+
+  async function runSequence(mode: "current" | "backfill") {
+    setRunning(mode);
+    setResults([]);
+    const steps = mode === "current"
+      ? [
+          { label: "Nettoyage", path: "/api/public/jobs/cleanup-history" },
+          { label: "Planning actuel", path: "/api/public/jobs/scrape-planning" },
+          { label: "Previsions", path: "/api/public/jobs/generate-forecasts" },
+          { label: "Nettoyage final", path: "/api/public/jobs/cleanup-history" },
+        ]
+      : [
+          { label: "Nettoyage", path: "/api/public/jobs/cleanup-history" },
+          { label: "Backfill SMGEAG", path: "/api/public/jobs/backfill-planning", body: { since: "2026-04-01", maxPosts: 8 } },
+          { label: "Previsions", path: "/api/public/jobs/generate-forecasts" },
+          { label: "Nettoyage final", path: "/api/public/jobs/cleanup-history" },
+        ];
+
+    const nextResults: JobStepResult[] = [];
+    try {
+      for (const step of steps) {
+        const result = await postJob(step.label, step.path, "body" in step ? step.body : {});
+        nextResults.push(result);
+        setResults([...nextResults]);
+        if (!result.ok) break;
+      }
+      const allOk = nextResults.length === steps.length && nextResults.every((r) => r.ok);
+      if (allOk) toast.success("Reparation terminee");
+      else toast.error("Reparation interrompue");
+    } finally {
+      setRunning(null);
+      onDone();
+    }
+  }
+
+  const busy = running !== null;
+
+  return (
+    <section className="rounded-2xl border border-primary/20 bg-card p-5 shadow-soft">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <DatabaseZap className="h-4 w-4 text-primary" />
+            <h2 className="font-display text-lg font-semibold">Reparation donnees</h2>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            Lance les jobs serveur avec ton compte admin pour remplir historique et previsions.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => runSequence("current")}>
+            {running === "current" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5 mr-1" />}
+            Planning actuel
+          </Button>
+          <Button size="sm" disabled={busy} onClick={() => runSequence("backfill")}>
+            {running === "backfill" ? <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> : <DatabaseZap className="h-3.5 w-3.5 mr-1" />}
+            Backfill depuis avril
+          </Button>
+        </div>
+      </div>
+
+      {results.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {results.map((result) => (
+            <div key={result.label} className="rounded-lg border border-border px-3 py-2 text-xs">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium">{result.label}</span>
+                <span className={result.ok ? "text-success" : "text-destructive"}>
+                  {result.ok ? <CheckCircle2 className="inline h-3.5 w-3.5 mr-1" /> : <XCircle className="inline h-3.5 w-3.5 mr-1" />}
+                  {result.status}
+                </span>
+              </div>
+              <pre className="mt-2 max-h-36 overflow-auto rounded bg-muted/40 p-2 text-[11px] text-muted-foreground">
+                {JSON.stringify(result.body, null, 2)}
+              </pre>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function KpiCard({ icon, title, value, sub }: { icon: ReactNode; title: string | number; value: number | string; sub?: string }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-4 shadow-soft">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
