@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
+const BOGUS_SMGEAG_HOMEPAGE_URL = "https://www.smgeag.fr/";
+
 type CleanupSummary = {
   normalized_outages?: number;
   normalized_history?: number;
@@ -8,7 +10,41 @@ type CleanupSummary = {
   deduped_forecasts?: number;
 };
 
-export async function cleanupHistory(): Promise<CleanupSummary & { archived: number; deleted: number; expiredArchived: number; expiredTrials: number; warnings?: string[] }> {
+async function purgeBogusHomepageRows() {
+  const { data: bogusOutages, error: selectError } = await supabaseAdmin
+    .from("outages")
+    .select("id")
+    .eq("source_url", BOGUS_SMGEAG_HOMEPAGE_URL);
+
+  if (selectError) throw selectError;
+
+  const outageIds = (bogusOutages ?? []).map((row) => row.id);
+  if (outageIds.length > 0) {
+    const { error: logError } = await supabaseAdmin.from("notification_logs").delete().in("outage_id", outageIds);
+    if (logError) throw logError;
+  }
+
+  const { data: deletedOutages, error: outageError } = await supabaseAdmin
+    .from("outages")
+    .delete()
+    .eq("source_url", BOGUS_SMGEAG_HOMEPAGE_URL)
+    .select("id");
+  if (outageError) throw outageError;
+
+  const { data: deletedHistory, error: historyError } = await supabaseAdmin
+    .from("outage_history")
+    .delete()
+    .eq("source_url", BOGUS_SMGEAG_HOMEPAGE_URL)
+    .select("id");
+  if (historyError) throw historyError;
+
+  return {
+    deletedOutages: deletedOutages?.length ?? 0,
+    deletedHistory: deletedHistory?.length ?? 0,
+  };
+}
+
+export async function cleanupHistory(): Promise<CleanupSummary & { archived: number; deleted: number; expiredArchived: number; expiredTrials: number; bogusHomepageDeleted: number; warnings?: string[] }> {
   const warnings: string[] = [];
   const { data: cleanupData, error: cleanupError } = await (supabaseAdmin as any).rpc("cleanup_outage_data");
   if (cleanupError) warnings.push(`cleanup_outage_data: ${cleanupError.message}`);
@@ -18,6 +54,14 @@ export async function cleanupHistory(): Promise<CleanupSummary & { archived: num
 
   const { data: expiredTrials, error: trialsError } = await (supabaseAdmin as any).rpc("expire_overdue_trials");
   if (trialsError) warnings.push(`expire_overdue_trials: ${trialsError.message}`);
+
+  let bogusHomepageDeleted = 0;
+  try {
+    const bogus = await purgeBogusHomepageRows();
+    bogusHomepageDeleted = bogus.deletedOutages + bogus.deletedHistory;
+  } catch (error) {
+    warnings.push(`purge_bogus_homepage: ${error instanceof Error ? error.message : String(error)}`);
+  }
 
   const cutoff = new Date(Date.now() - 7 * 86400_000).toISOString();
 
@@ -76,6 +120,7 @@ export async function cleanupHistory(): Promise<CleanupSummary & { archived: num
     expiredTrials: Number(expiredTrials ?? 0),
     archived: toArchive?.length ?? 0,
     deleted: deleted?.length ?? 0,
+    bogusHomepageDeleted,
     ...(warnings.length ? { warnings } : {}),
   };
 }
