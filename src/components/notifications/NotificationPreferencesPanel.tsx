@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Bell, Mail, Lock, Clock, History, Droplet, DropletOff, Smartphone, CheckCircle2, AlertTriangle, Save, Sparkles } from "lucide-react";
+import { Bell, Mail, Lock, Clock, History, Droplet, DropletOff, Smartphone, CheckCircle2, AlertTriangle, Save, Sparkles, Send, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/providers/AuthProvider";
@@ -60,7 +60,7 @@ function shallowEqualPrefs(a: Prefs, b: Prefs): boolean {
 }
 
 export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
-  const { user } = useAuth();
+  const { user, session } = useAuth();
   const qc = useQueryClient();
   const caps = PLAN_CAPS[tier];
   const [installed, setInstalled] = useState(false);
@@ -70,6 +70,7 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
   const [savedPrefs, setSavedPrefs] = useState<Prefs>(DEFAULT_PREFS);
   const [draft, setDraft] = useState<Prefs>(DEFAULT_PREFS);
   const [saving, setSaving] = useState(false);
+  const [testingPush, setTestingPush] = useState(false);
 
   useEffect(() => {
     setInstalled(isStandalone());
@@ -142,6 +143,34 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
     await persist();
   }
 
+  async function sendTestPush() {
+    if (!session?.access_token) {
+      toast.error("Reconnectez-vous pour envoyer une notification test.");
+      return;
+    }
+    setTestingPush(true);
+    try {
+      const res = await fetch("/api/notifications/test-push", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${session.access_token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({})) as { ok?: boolean; message?: string; error?: string };
+      if (res.ok && body.ok) {
+        toast.success(body.message ?? "Notification test envoyee.");
+      } else {
+        toast.error(body.message ?? body.error ?? "Notification test non envoyee.");
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Notification test non envoyee.");
+    } finally {
+      setTestingPush(false);
+    }
+  }
+
   const logs = useQuery({
     queryKey: ["notification_logs", user!.id],
     queryFn: async () => {
@@ -186,6 +215,23 @@ export function NotificationPreferencesPanel({ tier }: { tier: Tier }) {
       <div className={`rounded-xl border px-3 py-2.5 flex items-center gap-2 text-xs ${statusColor}`}>
         <status.icon className="h-4 w-4 shrink-0" />
         <span className="flex-1">{status.text}</span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={sendTestPush}
+          disabled={testingPush || isPreviewContext() || !isPushSupported() || pushPermission === "denied"}
+          className="gap-1.5 text-xs"
+        >
+          {testingPush ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+          Tester une notification
+        </Button>
+        <span className="text-[11px] text-muted-foreground">
+          Envoie une vraie push serveur a ce compte et cet appareil.
+        </span>
       </div>
 
       <NotifMatrix
