@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as UnsubscribeRouteImport } from './routes/unsubscribe'
 import { Route as MaCommuneRouteImport } from './routes/ma-commune'
 import { Route as ConnexionRouteImport } from './routes/connexion'
 import { Route as ConfidentialiteRouteImport } from './routes/confidentialite'
@@ -40,6 +41,11 @@ import { Route as ApiPublicJobsCleanupHistoryRouteImport } from './routes/api.pu
 import { Route as ApiPublicJobsCheckPreventiveRouteImport } from './routes/api.public.jobs.check-preventive'
 import { Route as ApiPublicJobsBackfillPlanningRouteImport } from './routes/api.public.jobs.backfill-planning'
 
+const UnsubscribeRoute = UnsubscribeRouteImport.update({
+  id: '/unsubscribe',
+  path: '/unsubscribe',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const MaCommuneRoute = MaCommuneRouteImport.update({
   id: '/ma-commune',
   path: '/ma-commune',
@@ -218,6 +224,7 @@ export interface FileRoutesByFullPath {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
@@ -250,6 +257,7 @@ export interface FileRoutesByTo {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
@@ -283,6 +291,7 @@ export interface FileRoutesById {
   '/confidentialite': typeof ConfidentialiteRoute
   '/connexion': typeof ConnexionRoute
   '/ma-commune': typeof MaCommuneRoute
+  '/unsubscribe': typeof UnsubscribeRoute
   '/checkout/return': typeof CheckoutReturnRoute
   '/email/unsubscribe': typeof EmailUnsubscribeRoute
   '/api/notifications/test-email': typeof ApiNotificationsTestEmailRoute
@@ -317,6 +326,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/unsubscribe'
     | '/checkout/return'
     | '/email/unsubscribe'
     | '/api/notifications/test-email'
@@ -349,6 +359,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/unsubscribe'
     | '/checkout/return'
     | '/email/unsubscribe'
     | '/api/notifications/test-email'
@@ -381,6 +392,7 @@ export interface FileRouteTypes {
     | '/confidentialite'
     | '/connexion'
     | '/ma-commune'
+    | '/unsubscribe'
     | '/checkout/return'
     | '/email/unsubscribe'
     | '/api/notifications/test-email'
@@ -414,6 +426,7 @@ export interface RootRouteChildren {
   ConfidentialiteRoute: typeof ConfidentialiteRoute
   ConnexionRoute: typeof ConnexionRoute
   MaCommuneRoute: typeof MaCommuneRoute
+  UnsubscribeRoute: typeof UnsubscribeRoute
   CheckoutReturnRoute: typeof CheckoutReturnRoute
   EmailUnsubscribeRoute: typeof EmailUnsubscribeRoute
   ApiNotificationsTestEmailRoute: typeof ApiNotificationsTestEmailRoute
@@ -439,6 +452,13 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/unsubscribe': {
+      id: '/unsubscribe'
+      path: '/unsubscribe'
+      fullPath: '/unsubscribe'
+      preLoaderRoute: typeof UnsubscribeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/ma-commune': {
       id: '/ma-commune'
       path: '/ma-commune'
@@ -662,6 +682,7 @@ const rootRouteChildren: RootRouteChildren = {
   ConfidentialiteRoute: ConfidentialiteRoute,
   ConnexionRoute: ConnexionRoute,
   MaCommuneRoute: MaCommuneRoute,
+  UnsubscribeRoute: UnsubscribeRoute,
   CheckoutReturnRoute: CheckoutReturnRoute,
   EmailUnsubscribeRoute: EmailUnsubscribeRoute,
   ApiNotificationsTestEmailRoute: ApiNotificationsTestEmailRoute,
