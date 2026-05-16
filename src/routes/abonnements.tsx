@@ -238,7 +238,7 @@ function PricingPage() {
             </div>
             <div className="rounded-lg border border-border bg-card p-4">
               <p className="font-semibold">Email branche</p>
-              <p className="mt-1 text-muted-foreground">Alertes email, fin d'essai et facturation sont envoyees via Resend.</p>
+              <p className="mt-1 text-muted-foreground">Alertes email, fin d'essai et facturation passent par AquaGwada Emails.</p>
             </div>
             <div className="rounded-lg border border-border bg-card p-4">
               <p className="font-semibold">Stripe</p>
