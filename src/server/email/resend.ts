@@ -1,6 +1,8 @@
 import { CONTACT_EMAIL } from "@/lib/contact";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 
+// Legacy filename: this module now queues mail for Lovable/AquaGwada Emails.
+
 type EmailPayload = {
   to: string;
   subject: string;
@@ -80,13 +82,10 @@ export async function sendEmail(payload: EmailPayload): Promise<EmailResult> {
     });
 
     if (error) {
-      await admin.from("email_send_log").insert({
-        message_id: messageId,
-        template_name: "app",
-        recipient_email: payload.to,
+      await admin.from("email_send_log").update({
         status: "failed",
         error_message: error.message,
-      });
+      }).eq("message_id", messageId);
       return { ok: false, error: error.message };
     }
 

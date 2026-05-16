@@ -36,10 +36,10 @@ export const Route = createFileRoute("/api/notifications/test-email")({
           to: user.email,
           subject: "Test email AquaGwada",
           html: [
-            "<p>Si vous recevez cet email, l'envoi Resend fonctionne pour AquaGwada.</p>",
+            "<p>Si vous recevez cet email, l'envoi email AquaGwada fonctionne.</p>",
             "<p>Les alertes email utiliseront le meme canal quand l'option Email est activee.</p>",
           ].join(""),
-          text: "Si vous recevez cet email, l'envoi Resend fonctionne pour AquaGwada.",
+          text: "Si vous recevez cet email, l'envoi email AquaGwada fonctionne.",
         });
 
         if (!result.ok) {
@@ -53,7 +53,7 @@ export const Route = createFileRoute("/api/notifications/test-email")({
         return jsonResponse({
           ok: true,
           id: result.id,
-          message: "Email test envoye.",
+          message: "Email test mis en file. Il devrait arriver dans quelques instants.",
         });
       },
     },

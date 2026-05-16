@@ -30,7 +30,9 @@ type Outage = {
   starts_at: string;
   ends_at: string | null;
   status: string;
+  source: "official" | "scraping" | "user_report" | "forecast";
   source_url: string | null;
+  created_at: string | null;
 };
 
 type ExistingNotificationLog = {
@@ -79,6 +81,17 @@ function errorMessage(error: unknown) {
 
 function isTrustedOutageSource(outage: Outage) {
   return outage.source_url !== BOGUS_SMGEAG_HOMEPAGE_URL;
+}
+
+function uniqueOutages(outages: Outage[]): Outage[] {
+  const seen = new Set<string>();
+  const unique: Outage[] = [];
+  for (const outage of outages) {
+    if (seen.has(outage.id)) continue;
+    seen.add(outage.id);
+    unique.push(outage);
+  }
+  return unique;
 }
 
 async function getUserEmail(userId: string) {
@@ -149,7 +162,9 @@ function buildPayload(kind: NotificationKind, outage: Outage, communeName: strin
     preventive_water_back: `Eau bientot de retour a ${communeName}`,
   };
   const bodies: Record<NotificationKind, string> = {
-    outage_start: "Une coupure vient de debuter. Suivez l'evolution dans l'app.",
+    outage_start: outage.source === "user_report"
+      ? "Une coupure est signalee. Suivez l'evolution dans l'app."
+      : "Une coupure vient de debuter. Suivez l'evolution dans l'app.",
     water_back: "L'eau a ete retablie. Pensez a purger les premiers litres.",
     preventive: `Coupure planifiee le ${formatGuadeloupeDateTime(outage.starts_at)} (heure Guadeloupe).`,
     preventive_water_back: `Retour de l'eau prevu vers ${outage.ends_at ? formatGuadeloupeTime(outage.ends_at) : "--"} (heure Guadeloupe).`,
@@ -178,15 +193,23 @@ export async function dispatchNotifications(): Promise<{
 
   const { data: started } = await supabaseAdmin
     .from("outages")
-    .select("id, commune_id, starts_at, ends_at, status, source_url")
+    .select("id, commune_id, starts_at, ends_at, status, source, source_url, created_at")
     .gte("starts_at", startLookbackIso)
     .lte("starts_at", now.toISOString())
     .neq("status", "cancelled")
     .neq("status", "resolved");
 
+  const { data: recentlyDiscovered } = await supabaseAdmin
+    .from("outages")
+    .select("id, commune_id, starts_at, ends_at, status, source, source_url, created_at")
+    .gte("created_at", startLookbackIso)
+    .lte("created_at", now.toISOString())
+    .eq("source", "user_report")
+    .eq("status", "ongoing");
+
   const { data: ended } = await supabaseAdmin
     .from("outages")
-    .select("id, commune_id, starts_at, ends_at, status, source_url")
+    .select("id, commune_id, starts_at, ends_at, status, source, source_url, created_at")
     .gte("ends_at", endLookbackIso)
     .lte("ends_at", now.toISOString())
     .neq("status", "cancelled");
@@ -194,7 +217,7 @@ export async function dispatchNotifications(): Promise<{
   const futureMaxIso = new Date(now.getTime() + 48 * 3600_000).toISOString();
   const { data: scheduled } = await supabaseAdmin
     .from("outages")
-    .select("id, commune_id, starts_at, ends_at, status, source_url")
+    .select("id, commune_id, starts_at, ends_at, status, source, source_url, created_at")
     .gte("starts_at", now.toISOString())
     .lte("starts_at", futureMaxIso)
     .neq("status", "cancelled")
@@ -203,7 +226,7 @@ export async function dispatchNotifications(): Promise<{
   const wbMaxIso = new Date(now.getTime() + 6 * 3600_000).toISOString();
   const { data: aboutToEnd } = await supabaseAdmin
     .from("outages")
-    .select("id, commune_id, starts_at, ends_at, status, source_url")
+    .select("id, commune_id, starts_at, ends_at, status, source, source_url, created_at")
     .lte("starts_at", now.toISOString())
     .gte("ends_at", now.toISOString())
     .lte("ends_at", wbMaxIso)
@@ -304,7 +327,7 @@ export async function dispatchNotifications(): Promise<{
             } else {
               const result = await sendEmail({ to: email, ...outageEmail(payload.title, payload.body) });
               sent = result.ok;
-              note = result.ok ? "email envoye via Resend" : `email non envoye: ${result.error}`;
+              note = result.ok ? "email mis en file via AquaGwada Emails" : `email non envoye: ${result.error}`;
             }
           }
 
@@ -346,7 +369,10 @@ export async function dispatchNotifications(): Promise<{
     }
   }
 
-  await processGroup(((started ?? []) as Outage[]).filter(isTrustedOutageSource), "outage_start");
+  await processGroup(uniqueOutages([
+    ...((started ?? []) as Outage[]),
+    ...((recentlyDiscovered ?? []) as Outage[]),
+  ]).filter(isTrustedOutageSource), "outage_start");
   await processGroup(((ended ?? []) as Outage[]).filter(isTrustedOutageSource), "water_back");
   await processGroup(((scheduled ?? []) as Outage[]).filter(isTrustedOutageSource), "preventive");
   await processGroup(((aboutToEnd ?? []) as Outage[]).filter(isTrustedOutageSource), "preventive_water_back");

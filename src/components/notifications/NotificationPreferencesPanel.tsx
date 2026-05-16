@@ -464,7 +464,7 @@ function NotifMatrix({ prefs, preventiveEnabled, pushBlocked, update }: {
   ];
   const channels = [
     { key: "push_enabled" as const, label: "Push", icon: Bell, locked: pushBlocked, badge: "instantane" },
-    { key: "email_enabled" as const, label: "Email", icon: Mail, locked: false, badge: "Resend" },
+    { key: "email_enabled" as const, label: "Email", icon: Mail, locked: false, badge: "optionnel" },
   ];
 
   return (
@@ -563,7 +563,7 @@ function NotifMatrix({ prefs, preventiveEnabled, pushBlocked, update }: {
         </table>
       </div>
       <p className="mt-2 text-[11px] text-muted-foreground">
-        Les notifications Push sont instantanees. Les emails sont envoyes via Resend quand le canal Email est active.
+        Les notifications Push sont instantanees. Les emails sont envoyes par AquaGwada quand le canal Email est active.
         SMS et WhatsApp restent reserves au plan Business sur devis.
       </p>
     </div>
