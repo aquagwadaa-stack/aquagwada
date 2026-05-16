@@ -61,6 +61,40 @@ async function moveToDlq(
   }
 }
 
+async function updateOrInsertEmailLog(
+  supabase: any,
+  payload: Record<string, any>,
+  queue: string,
+  status: 'sent' | 'suppressed',
+  errorMessage?: string
+): Promise<void> {
+  const messageId = typeof payload.message_id === 'string' ? payload.message_id : null
+  const row = {
+    message_id: messageId,
+    template_name: payload.label || queue,
+    recipient_email: payload.to,
+    status,
+    error_message: errorMessage,
+  }
+
+  if (messageId) {
+    const { data: updatedRows, error: updateError } = await supabase
+      .from('email_send_log')
+      .update({
+        status,
+        error_message: errorMessage ?? null,
+      })
+      .eq('message_id', messageId)
+      .neq('status', 'sent')
+      .select('id')
+      .limit(1)
+
+    if (!updateError && updatedRows?.length) return
+  }
+
+  await supabase.from('email_send_log').insert(row)
+}
+
 export const Route = createFileRoute("/lovable/email/queue/process")({
   server: {
     handlers: {
@@ -221,6 +255,56 @@ export const Route = createFileRoute("/lovable/email/queue/process")({
               }
             }
 
+            const normalizedRecipient =
+              typeof payload.to === 'string' ? payload.to.toLowerCase() : null
+            if (normalizedRecipient) {
+              const { data: suppressed, error: suppressionError } = await supabase
+                .from('suppressed_emails')
+                .select('id')
+                .eq('email', normalizedRecipient)
+                .maybeSingle()
+
+              if (suppressionError) {
+                console.error('Suppression check failed for queued email', {
+                  queue,
+                  msg_id: msg.msg_id,
+                  message_id: payload.message_id,
+                  error: suppressionError,
+                })
+                await supabase.from('email_send_log').insert({
+                  message_id: payload.message_id,
+                  template_name: payload.label || queue,
+                  recipient_email: payload.to,
+                  status: 'failed',
+                  error_message: `Suppression check failed: ${suppressionError.message}`.slice(0, 1000),
+                })
+                continue
+              }
+
+              if (suppressed) {
+                await updateOrInsertEmailLog(
+                  supabase,
+                  payload,
+                  queue,
+                  'suppressed',
+                  'Recipient is suppressed'
+                )
+                const { error: suppressedDelError } = await supabase.rpc('delete_email', {
+                  queue_name: queue,
+                  message_id: msg.msg_id,
+                })
+                if (suppressedDelError) {
+                  console.error('Failed to delete suppressed message from queue', {
+                    queue,
+                    msg_id: msg.msg_id,
+                    error: suppressedDelError,
+                  })
+                }
+                totalProcessed++
+                continue
+              }
+            }
+
             try {
               await sendLovableEmail(
                 {
@@ -241,12 +325,7 @@ export const Route = createFileRoute("/lovable/email/queue/process")({
               )
 
               // Log success
-              await supabase.from('email_send_log').insert({
-                message_id: payload.message_id,
-                template_name: payload.label || queue,
-                recipient_email: payload.to,
-                status: 'sent',
-              })
+              await updateOrInsertEmailLog(supabase, payload, queue, 'sent')
 
               // Delete from queue
               const { error: delError } = await supabase.rpc('delete_email', {
