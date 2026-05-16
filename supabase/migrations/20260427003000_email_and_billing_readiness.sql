@@ -2,7 +2,7 @@
 -- - store processed Stripe event ids to avoid duplicate transactional emails
 -- - store trial reminder emails already sent
 -- - schedule the protected trial email job
--- - expose email as an implemented channel now that Resend is wired server-side
+-- - expose email as an implemented channel now that transactional mail is wired server-side
 
 CREATE TABLE IF NOT EXISTS public.stripe_event_logs (
   id text PRIMARY KEY,
@@ -12,10 +12,12 @@ CREATE TABLE IF NOT EXISTS public.stripe_event_logs (
 
 CREATE TABLE IF NOT EXISTS public.trial_email_reminders (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  subscription_id uuid NOT NULL,
   user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  trial_ends_at timestamptz NOT NULL,
   kind text NOT NULL CHECK (kind IN ('trial_ending', 'trial_ended')),
   sent_at timestamptz NOT NULL DEFAULT now(),
-  UNIQUE (user_id, kind)
+  UNIQUE (subscription_id, kind)
 );
 
 ALTER TABLE public.notification_logs
